@@ -1,0 +1,122 @@
+// -*-java-*-
+syntax = "proto3";
+//option java_multiple_files = true;
+option java_package = "com.cloudant.search3.grpc";
+
+service Search {
+    // Index operations
+    rpc Delete(Index) returns (ServiceResponse);
+    rpc GetUpdateSequence(Index) returns (UpdateSeq);
+    rpc Info(Index) returns (InfoResponse);
+    rpc SetUpdateSequence(SetUpdateSeq) returns (ServiceResponse);
+
+    // Read operations
+    rpc Search(SearchRequest) returns (SearchResponse);
+
+    // Write operations
+    rpc Update(stream DocumentUpdate) returns (ServiceResponse);
+}
+
+// Uniquely identifies a search index.
+message Index {
+    bytes prefix = 1;
+}
+
+message InfoResponse {
+    uint64 size = 1;
+    uint32 doc_count = 2;
+    uint32 doc_del_count = 3;
+    string committed_seq = 5;
+    string purge_seq = 6;
+}
+
+message SearchRequest {
+    Index index = 1;
+    string query = 2;
+    uint32 limit = 3;
+
+    message Sort {
+        repeated string fields = 1;
+    }
+    Sort sort = 4;
+
+    bool include_docs = 5;
+    string bookmark = 6;
+    bool stale = 7;
+    bool stable = 8;
+    string partition = 9;
+
+    message Grouping {
+        string by = 1;
+        uint32 offset = 2;
+        uint32 limit = 3;
+        Sort sort = 4;
+    }
+    Grouping grouping = 10;
+
+    repeated string counts = 11;
+    string ranges = 12;
+    string drilldown = 13;
+    repeated string include_fields = 14;
+}
+
+message SearchResponse {
+    sint64 readVersion = 1;
+    uint32 matches = 2;
+    repeated Hit hits = 3;
+}
+
+message Hit {
+    repeated FieldValue order = 1;
+    repeated HitField fields = 2;
+}
+
+message Document {
+    string index = 1;
+    repeated IndexableField fields = 2;
+}
+
+message IndexableField {
+    string name = 1;
+    FieldValue value = 2;
+    bool stored = 3;
+    bool facet = 4;
+}
+
+message HitField {
+    string name = 1;
+    FieldValue value = 2;
+}
+
+message FieldValue {
+    oneof value_oneof {
+        string string_value = 1;
+        bool bool_value = 2;
+        double double_value = 3;
+    }
+}
+
+message SearchTerm {
+    string field = 1;
+    string value = 2;
+}
+
+message DocumentUpdate {
+    Index index = 1;
+    SearchTerm term = 2;
+    repeated IndexableField fields = 3; // leave empty to imply delete.
+}
+
+message UpdateSeq {
+    string seq = 1;
+}
+
+message SetUpdateSeq {
+    Index index = 1;
+    string seq = 2;
+}
+
+message ServiceResponse {
+    uint32 code = 1;
+    string reason = 2;
+}
