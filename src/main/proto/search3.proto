@@ -14,7 +14,7 @@ service Search {
     rpc Search(SearchRequest) returns (SearchResponse);
 
     // Write operations
-    rpc Update(stream DocumentUpdate) returns (ServiceResponse);
+    rpc Update(stream DocumentUpdate) returns (ServiceResponse);    
 }
 
 // Uniquely identifies a search index.
@@ -62,7 +62,7 @@ message SearchRequest {
 
 message SearchResponse {
     sint64 readVersion = 1;
-    uint32 matches = 2;
+    uint64 matches = 2;
     repeated Hit hits = 3;
 }
 
@@ -79,8 +79,9 @@ message Document {
 message IndexableField {
     string name = 1;
     FieldValue value = 2;
-    bool stored = 3;
-    bool facet = 4;
+    bool analyzed = 3;
+    bool stored = 4;
+    bool facet = 5;
 }
 
 message HitField {

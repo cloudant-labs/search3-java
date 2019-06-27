@@ -25,54 +25,62 @@ import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.facet.FacetsConfig;
 import org.apache.lucene.facet.sortedset.SortedSetDocValuesFacetField;
-import org.apache.lucene.index.IndexableField;
 
 public final class DocumentBuilder {
 
     private Document document;
 
     public DocumentBuilder() {
-        this.document = new Document();
     }
 
-    public DocumentBuilder addString(final String name, final String value) {
-        add(new StringField(name, value, Store.YES));
+    public DocumentBuilder addString(final String name, final String value, final boolean store) {
+        doc().add(new StringField(name, value, toStore(store)));
         return this;
     }
 
     public DocumentBuilder addText(final String name, final String value, final boolean store, final boolean facet) {
-        add(new TextField(name, value, store ? Store.YES : Store.NO));
+        doc().add(new TextField(name, value, toStore(store)));
         if (facet) {
-            add(new SortedSetDocValuesFacetField(name, value));
+            doc().add(new SortedSetDocValuesFacetField(name, value));
         }
         return this;
     }
 
     public DocumentBuilder addBoolean(final String name, final boolean value, final boolean store) {
-        add(new StringField(name, value ? "true" : "false", store ? Store.YES : Store.NO));
+        doc().add(new StringField(name, value ? "true" : "false", toStore(store)));
         return this;
     }
 
     public DocumentBuilder addDouble(final String name, final double value, final boolean store) {
         // For querying.
-        add(new DoublePoint(name, value));
+        doc().add(new DoublePoint(name, value));
+
         // For sorting and facets.
-        add(new DoubleDocValuesField(name, value));
+        doc().add(new DoubleDocValuesField(name, value));
+
+        // For retrieval.
         if (store) {
-            add(new StoredField(name, value));
+            doc().add(new StoredField(name, value));
         }
         return this;
     }
 
     public Document build() throws IOException {
-        new FacetsConfig().build(this.document);
-        final Document result = this.document;
-        this.document = new Document();
+        final Document result = doc();
+        this.document = null;
+        new FacetsConfig().build(result);
         return result;
     }
 
-    private void add(final IndexableField field) {
-        this.document.add(field);
+    private Store toStore(final boolean store) {
+        return store ? Store.YES : Store.NO;
+    }
+
+    private Document doc() {
+        if (this.document == null) {
+            this.document = new Document();
+        }
+        return this.document;
     }
 
 }

@@ -58,6 +58,7 @@ public final class SearchHandler implements AutoCloseable {
     private final SearcherManager manager;
 
     private String pendingUpdateSeq;
+    private String updateSeq;
 
     public static SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer)
             throws IOException {
@@ -76,12 +77,17 @@ public final class SearchHandler implements AutoCloseable {
     @Override
     public void close() throws IOException {
         this.manager.close();
-        this.writer.close();
+        this.writer.rollback();
     }
 
     public TopDocs search(final Query query, final int n, final boolean staleOk) throws IOException {
         return withSearcher(staleOk, searcher -> {
-            return searcher.search(query, n);
+            final TopDocs topDocs = searcher.search(query, n);
+            final Document[] docs = new Document[topDocs.scoreDocs.length];
+            for (int i = 0; i < topDocs.scoreDocs.length; i++) {
+                docs[i] = searcher.doc(topDocs.scoreDocs[i].doc);
+            }
+            return null;
         });
     }
 
@@ -120,21 +126,29 @@ public final class SearchHandler implements AutoCloseable {
         this.writer.deleteDocuments(terms);
     }
 
-    public void setUpdateSeq(final String updateSeq) {
-        this.pendingUpdateSeq = updateSeq;
+    public String getUpdateSeq() {
+        return updateSeq;
+    }
+
+    public void setPendingUpdateSeq(final String pendingUpdateSeq) {
+        this.pendingUpdateSeq = pendingUpdateSeq;
     }
 
     public void commit() throws IOException {
+        if (pendingUpdateSeq == null) {
+            throw new IllegalStateException("Cannot commit without a new update sequence");
+        }
         final Map<String, String> commitData = Collections.singletonMap("update_seq", pendingUpdateSeq);
         this.writer.setLiveCommitData(commitData.entrySet());
         this.writer.commit();
+        this.updateSeq = this.pendingUpdateSeq;
+        this.pendingUpdateSeq = null;
     }
 
     private static IndexWriterConfig indexWriterConfig(final Analyzer analyzer) {
         final IndexWriterConfig result = new IndexWriterConfig(analyzer);
         result.setIndexSort(new Sort(new SortField("_id", Type.STRING)));
         result.setUseCompoundFile(false);
-        result.setCommitOnClose(false);
         return result;
     }
 
