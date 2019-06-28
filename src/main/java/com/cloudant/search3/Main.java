@@ -28,11 +28,12 @@ import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
 public class Main {
 
     public static void main(String[] args) throws Exception {
-        final int port = Integer.parseInt(System.getProperty("port"));
-        final int fdbApiVersion = Integer.parseInt(System.getProperty("fdbApiVersion"));
-        final File certChainFile = new File(System.getProperty("certChainFile"));
-        final File privateKeyFile = new File(System.getProperty("privateKeyFile"));
-        final File clientCAFile = new File(System.getProperty("clientCAFile"));
+        final int port = Integer.parseInt(System.getProperty("port", "8443"));
+        final int fdbApiVersion = Integer.parseInt(System.getProperty("fdbApiVersion", "600"));
+        final File certChainFile = new File(System.getProperty("certChainFile", "cert.pem"));
+        // Key needs to be in PKCS8 format for Netty for some bizarre reason.
+        final File privateKeyFile = new File(System.getProperty("privateKeyFile", "key.pem"));
+        final File clientCAFile = new File(System.getProperty("clientCAFile", "ca.pem"));
 
         FDB.selectAPIVersion(fdbApiVersion);
         final Database db = FDB.instance().open();
@@ -51,6 +52,7 @@ public class Main {
             }
         });
 
+        server.start();
         server.awaitTermination();
     }
 
