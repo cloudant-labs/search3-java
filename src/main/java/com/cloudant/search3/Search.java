@@ -40,6 +40,8 @@ import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
 import com.cloudant.search3.grpc.Search3.DocumentUpdate;
 import com.cloudant.search3.grpc.Search3.FieldValue;
+import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
+import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.IndexableField;
@@ -50,7 +52,9 @@ import com.cloudant.search3.grpc.Search3.SearchTerm;
 import com.cloudant.search3.grpc.Search3.ServiceResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
+import com.cloudant.search3.grpc.Search3;
 import com.cloudant.search3.grpc.SearchGrpc;
+import com.google.protobuf.ProtocolStringList;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -100,19 +104,18 @@ public final class Search extends SearchGrpc.SearchImplBase {
     @Override
     public void search(final SearchRequest request, final StreamObserver<SearchResponse> responseObserver) {
         try {
-            final Query query = toQuery(request);
+            final Query query = toQuery(request.getQuery(), request.getPartition());
             final int limit = request.getLimit();
+            final ProtocolStringList includeFields = request.getIncludeFieldsList();
             final boolean staleOk = request.getStale();
 
             final SearchHandler handler = getOrOpen(request.getIndex());
             final SearchResponse response;
 
-            if (request.hasGrouping()) {
-                response = groupSearch(request, query, limit, staleOk, handler);
-            } else if (request.hasSort()) {
-                response = sortedSearch(request, query, limit, staleOk, handler);
+            if (request.hasSort()) {
+                response = sortedSearch(handler, query, limit, request.getSort(), staleOk);
             } else {
-                response = relevanceSearch(query, limit, staleOk, handler);
+                response = relevanceSearch(handler, query, limit, staleOk);
             }
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -126,49 +129,60 @@ public final class Search extends SearchGrpc.SearchImplBase {
 
     }
 
-    private SearchResponse groupSearch(
-            final SearchRequest request,
-            final Query query,
-            final int limit,
-            final boolean staleOk,
-            final SearchHandler handler) throws IOException {
-        final SearchResponse response;
-        final String groupBy = request.getGrouping().getBy();
-        final Sort groupSort = toSort(request.getGrouping().getSort());
-        final int groupOffset = request.getGrouping().getOffset();
-        final int groupLimit = request.getGrouping().getLimit();
+    @Override
+    public void groupSearch(
+            final GroupSearchRequest request,
+            final StreamObserver<GroupSearchResponse> responseObserver) {
+        try {
+            final Query query = toQuery(request.getQuery(), "");
+            final int limit = request.getLimit();
+            final boolean staleOk = request.getStale();
+            final String groupBy = request.getGroupBy();
+            final Sort groupSort = toSort(request.getGroupSort());
+            final int groupOffset = request.getGroupOffset();
+            final int groupLimit = request.getGroupLimit();
 
-        final TopGroups<BytesRef> result = handler
-                .groupingSearch(query, groupBy, groupSort, groupOffset, groupLimit, limit, staleOk);
-        response = SearchResponse.newBuilder().build();
-        return response;
+            final SearchHandler handler = getOrOpen(request.getIndex());
+            final TopGroups<BytesRef> result = handler
+                    .groupingSearch(query, groupBy, groupSort, groupOffset, groupLimit, limit, staleOk);
+
+            final GroupSearchResponse response = GroupSearchResponse.newBuilder().build();
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        } catch (final IOException e) {
+            responseObserver.onError(Status.UNKNOWN.asException());
+            return;
+        } catch (final ParseException e) {
+            responseObserver.onError(Status.UNKNOWN.asException());
+            return;
+        }
     }
 
     private SearchResponse sortedSearch(
-            final SearchRequest request,
+            final SearchHandler handler,
             final Query query,
             final int limit,
-            final boolean staleOk,
-            final SearchHandler handler) throws IOException {
-        final Sort sort = toSort(request.getSort());
-        final TopFieldDocs topFieldDocs = handler.search(query, limit, sort, staleOk);
+            com.cloudant.search3.grpc.Search3.Sort sort,
+            final boolean staleOk) throws IOException {
+        final TopFieldDocs topFieldDocs = handler.search(query, limit, toSort(sort), staleOk);
         final SearchResponse.Builder builder = SearchResponse.newBuilder();
         builder.setMatches(topFieldDocs.totalHits.value);
         for (int i = 0; i < topFieldDocs.scoreDocs.length; i++) {
-
+            builder.addHits(toHit(topFieldDocs.scoreDocs[i].doc
         }
         return builder.build();
     }
 
     private SearchResponse relevanceSearch(
+            final SearchHandler handler,
             final Query query,
             final int limit,
-            final boolean staleOk,
-            final SearchHandler handler) throws IOException {
+            final boolean staleOk) throws IOException {
         final TopDocs topDocs = handler.search(query, limit, staleOk);
         final SearchResponse.Builder builder = SearchResponse.newBuilder();
         builder.setMatches(topDocs.totalHits.value);
         for (final ScoreDoc scoreDoc : topDocs.scoreDocs) {
+
             builder.addHits(toHit(scoreDoc));
         }
         return builder.build();
@@ -235,7 +249,7 @@ public final class Search extends SearchGrpc.SearchImplBase {
         return new Subspace(index.getPrefix().toByteArray());
     }
 
-    private Sort toSort(final com.cloudant.search3.grpc.Search3.SearchRequest.Sort sort) {
+    private Sort toSort(final com.cloudant.search3.grpc.Search3.Sort sort) {
         final Sort result = new Sort();
         sort.getFieldsList().forEach(str -> {
 
@@ -285,9 +299,8 @@ public final class Search extends SearchGrpc.SearchImplBase {
         return builder.build();
     }
 
-    private Query toQuery(final SearchRequest request) throws ParseException {
-        final Query query = queryParser.parse(request.getQuery());
-        final String partition = request.getPartition();
+    private Query toQuery(final String queryString, final String partition) throws ParseException {
+        final Query query = queryParser.parse(queryString);
         if (partition.length() > 0) {
             return addPartition(query, partition);
         } else {

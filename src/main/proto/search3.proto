@@ -12,6 +12,7 @@ service Search {
 
     // Read operations
     rpc Search(SearchRequest) returns (SearchResponse);
+    rpc GroupSearch(GroupSearchRequest) returns (GroupSearchResponse);
 
     // Write operations
     rpc Update(stream DocumentUpdate) returns (ServiceResponse);    
@@ -30,38 +31,39 @@ message InfoResponse {
     string purge_seq = 6;
 }
 
+message Sort {
+    repeated string fields = 1;
+}
+
+message GroupSearchRequest {
+    Index index = 1;
+    string query = 2;
+    uint32 limit = 3;
+    bool stale = 4;
+    string group_by = 5;
+    uint32 group_offset = 6;
+    uint32 group_limit = 7;
+    Sort group_sort = 8;
+}
+
+message GroupSearchResponse {
+    
+}
+
 message SearchRequest {
     Index index = 1;
     string query = 2;
     uint32 limit = 3;
-
-    message Sort {
-        repeated string fields = 1;
-    }
-    Sort sort = 4;
-
-    bool include_docs = 5;
-    string bookmark = 6;
-    bool stale = 7;
-    bool stable = 8;
-    string partition = 9;
-
-    message Grouping {
-        string by = 1;
-        uint32 offset = 2;
-        uint32 limit = 3;
-        Sort sort = 4;
-    }
-    Grouping grouping = 10;
-
-    repeated string counts = 11;
-    string ranges = 12;
-    string drilldown = 13;
-    repeated string include_fields = 14;
+    bool stale = 4;
+    Sort sort = 5;
+    string partition = 6;
+    repeated string counts = 7;
+    string ranges = 8;
+    string drilldown = 9;
+    repeated string include_fields = 10;
 }
 
 message SearchResponse {
-    sint64 readVersion = 1;
     uint64 matches = 2;
     repeated Hit hits = 3;
 }
@@ -73,10 +75,10 @@ message Hit {
 
 message Document {
     string index = 1;
-    repeated IndexableField fields = 2;
+    repeated DocumentField fields = 2;
 }
 
-message IndexableField {
+message DocumentField {
     string name = 1;
     FieldValue value = 2;
     bool analyzed = 3;
@@ -105,7 +107,7 @@ message SearchTerm {
 message DocumentUpdate {
     Index index = 1;
     SearchTerm term = 2;
-    repeated IndexableField fields = 3; // leave empty to imply delete.
+    repeated DocumentField fields = 3; // leave empty to imply delete.
 }
 
 message UpdateSeq {

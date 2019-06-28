@@ -17,11 +17,13 @@ package com.cloudant.search3;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
@@ -39,6 +41,10 @@ import org.apache.lucene.util.BytesRef;
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
 import com.cloudant.fdblucene.FDBDirectory;
+import com.cloudant.search3.grpc.Search3.FieldValue;
+import com.cloudant.search3.grpc.Search3.Hit;
+import com.cloudant.search3.grpc.Search3.HitField;
+import com.cloudant.search3.grpc.Search3.SearchResponse;
 
 /**
  * Provides all services for a specific index; should be cached.
@@ -80,14 +86,34 @@ public final class SearchHandler implements AutoCloseable {
         this.writer.rollback();
     }
 
-    public TopDocs search(final Query query, final int n, final boolean staleOk) throws IOException {
+    public SearchResponse search(final Query query, final int n, final Set<String> fieldsToLoad, final boolean staleOk)
+            throws IOException {
         return withSearcher(staleOk, searcher -> {
             final TopDocs topDocs = searcher.search(query, n);
-            final Document[] docs = new Document[topDocs.scoreDocs.length];
+            final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
+            responseBuilder.setMatches(topDocs.totalHits.value);
             for (int i = 0; i < topDocs.scoreDocs.length; i++) {
-                docs[i] = searcher.doc(topDocs.scoreDocs[i].doc);
+                final Hit.Builder hitBuilder = Hit.newBuilder();
+                hitBuilder.addOrder(FieldValue.newBuilder().setDoubleValue(topDocs.scoreDocs[i].score));
+                hitBuilder.addOrder(FieldValue.newBuilder().setDoubleValue(topDocs.scoreDocs[i].doc));
+                final Document doc = searcher.doc(topDocs.scoreDocs[i].doc, fieldsToLoad);
+                for (final IndexableField field : doc) {
+                    final HitField.Builder hitFieldBuilder = HitField.newBuilder();
+                    hitFieldBuilder.setName(field.name());
+                    final FieldValue.Builder fieldValueBuilder;
+                    if (field.stringValue() != null) {
+                        fieldValueBuilder = FieldValue.newBuilder().setStringValue(field.stringValue());
+                    } else if (field.numericValue() != null) {
+                        fieldValueBuilder = FieldValue.newBuilder().setDoubleValue(field.numericValue().doubleValue());
+                    } else {
+                        continue;
+                    }
+                    hitFieldBuilder.setValue(fieldValueBuilder);
+                    hitBuilder.addFields(hitFieldBuilder);
+                }
+                responseBuilder.addHits(hitBuilder);
             }
-            return null;
+            return responseBuilder.build();
         });
     }
 
