@@ -25,6 +25,7 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SearcherManager;
@@ -93,34 +94,45 @@ public final class SearchHandler implements AutoCloseable {
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
             responseBuilder.setMatches(topDocs.totalHits.value);
             for (int i = 0; i < topDocs.scoreDocs.length; i++) {
-                final Hit.Builder hitBuilder = Hit.newBuilder();
-                hitBuilder.addOrder(FieldValue.newBuilder().setDoubleValue(topDocs.scoreDocs[i].score));
-                hitBuilder.addOrder(FieldValue.newBuilder().setDoubleValue(topDocs.scoreDocs[i].doc));
                 final Document doc = searcher.doc(topDocs.scoreDocs[i].doc, fieldsToLoad);
-                for (final IndexableField field : doc) {
-                    final HitField.Builder hitFieldBuilder = HitField.newBuilder();
-                    hitFieldBuilder.setName(field.name());
-                    final FieldValue.Builder fieldValueBuilder;
-                    if (field.stringValue() != null) {
-                        fieldValueBuilder = FieldValue.newBuilder().setStringValue(field.stringValue());
-                    } else if (field.numericValue() != null) {
-                        fieldValueBuilder = FieldValue.newBuilder().setDoubleValue(field.numericValue().doubleValue());
-                    } else {
-                        continue;
-                    }
-                    hitFieldBuilder.setValue(fieldValueBuilder);
-                    hitBuilder.addFields(hitFieldBuilder);
-                }
+                final Hit.Builder hitBuilder = Hit.newBuilder();
+                hitBuilder.setId(doc.get("_id"));
+                hitBuilder.addOrder(FieldValue.newBuilder().setDoubleValue(topDocs.scoreDocs[i].score));
+                addFieldsToHit(hitBuilder, doc);
                 responseBuilder.addHits(hitBuilder);
             }
             return responseBuilder.build();
         });
     }
 
-    public TopFieldDocs search(final Query query, final int n, final Sort sort, final boolean staleOk)
-            throws IOException {
+    public SearchResponse search(
+            final Query query,
+            final int n,
+            final Sort sort,
+            final Set<String> fieldsToLoad,
+            final boolean staleOk) throws IOException {
         return withSearcher(staleOk, searcher -> {
-            return searcher.search(query, n, sort);
+            final TopFieldDocs topFieldDocs = searcher.search(query, n, sort);
+            final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
+            responseBuilder.setMatches(topFieldDocs.totalHits.value);
+            for (int i = 0; i < topFieldDocs.scoreDocs.length; i++) {
+                final FieldDoc fieldDoc = (FieldDoc) topFieldDocs.scoreDocs[i];
+                final Document doc = searcher.doc(fieldDoc.doc, fieldsToLoad);
+                final Hit.Builder hitBuilder = Hit.newBuilder();
+                hitBuilder.setId(doc.get("_id"));
+                for (int j = 0; j < fieldDoc.fields.length; j++) {
+                    final Object field = fieldDoc.fields[j];
+                    if (field instanceof String) {
+                        hitBuilder.addOrder(FieldValue.newBuilder().setStringValue((String) field));
+                    }
+                    if (field instanceof Number) {
+                        hitBuilder.addOrder(FieldValue.newBuilder().setDoubleValue(((Number) field).doubleValue()));
+                    }
+                }
+                addFieldsToHit(hitBuilder, doc);
+                responseBuilder.addHits(hitBuilder);
+            }
+            return responseBuilder.build();
         });
     }
 
@@ -187,6 +199,23 @@ public final class SearchHandler implements AutoCloseable {
             return f.apply(searcher);
         } finally {
             manager.release(searcher);
+        }
+    }
+
+    private void addFieldsToHit(final Hit.Builder hitBuilder, final Document doc) {
+        for (final IndexableField field : doc) {
+            final HitField.Builder hitFieldBuilder = HitField.newBuilder();
+            hitFieldBuilder.setName(field.name());
+            final FieldValue.Builder fieldValueBuilder;
+            if (field.stringValue() != null) {
+                fieldValueBuilder = FieldValue.newBuilder().setStringValue(field.stringValue());
+            } else if (field.numericValue() != null) {
+                fieldValueBuilder = FieldValue.newBuilder().setDoubleValue(field.numericValue().doubleValue());
+            } else {
+                continue;
+            }
+            hitFieldBuilder.setValue(fieldValueBuilder);
+            hitBuilder.addFields(hitFieldBuilder);
         }
     }
 

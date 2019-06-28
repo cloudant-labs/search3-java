@@ -15,7 +15,9 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -31,20 +33,18 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.BytesRef;
 
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
+import com.cloudant.search3.grpc.Search3.DocumentField;
 import com.cloudant.search3.grpc.Search3.DocumentUpdate;
 import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
-import com.cloudant.search3.grpc.Search3.IndexableField;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
@@ -52,9 +52,7 @@ import com.cloudant.search3.grpc.Search3.SearchTerm;
 import com.cloudant.search3.grpc.Search3.ServiceResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
-import com.cloudant.search3.grpc.Search3;
 import com.cloudant.search3.grpc.SearchGrpc;
-import com.google.protobuf.ProtocolStringList;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -106,16 +104,17 @@ public final class Search extends SearchGrpc.SearchImplBase {
         try {
             final Query query = toQuery(request.getQuery(), request.getPartition());
             final int limit = request.getLimit();
-            final ProtocolStringList includeFields = request.getIncludeFieldsList();
+            final Set<String> fieldsToLoad = new HashSet<String>(request.getIncludeFieldsList());
             final boolean staleOk = request.getStale();
 
             final SearchHandler handler = getOrOpen(request.getIndex());
-            final SearchResponse response;
 
+            final SearchResponse response;
             if (request.hasSort()) {
-                response = sortedSearch(handler, query, limit, request.getSort(), staleOk);
+                final Sort sort = toSort(request.getSort());
+                response = handler.search(query, limit, sort, fieldsToLoad, staleOk);
             } else {
-                response = relevanceSearch(handler, query, limit, staleOk);
+                response = handler.search(query, limit, fieldsToLoad, staleOk);
             }
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -158,36 +157,6 @@ public final class Search extends SearchGrpc.SearchImplBase {
         }
     }
 
-    private SearchResponse sortedSearch(
-            final SearchHandler handler,
-            final Query query,
-            final int limit,
-            com.cloudant.search3.grpc.Search3.Sort sort,
-            final boolean staleOk) throws IOException {
-        final TopFieldDocs topFieldDocs = handler.search(query, limit, toSort(sort), staleOk);
-        final SearchResponse.Builder builder = SearchResponse.newBuilder();
-        builder.setMatches(topFieldDocs.totalHits.value);
-        for (int i = 0; i < topFieldDocs.scoreDocs.length; i++) {
-            builder.addHits(toHit(topFieldDocs.scoreDocs[i].doc
-        }
-        return builder.build();
-    }
-
-    private SearchResponse relevanceSearch(
-            final SearchHandler handler,
-            final Query query,
-            final int limit,
-            final boolean staleOk) throws IOException {
-        final TopDocs topDocs = handler.search(query, limit, staleOk);
-        final SearchResponse.Builder builder = SearchResponse.newBuilder();
-        builder.setMatches(topDocs.totalHits.value);
-        for (final ScoreDoc scoreDoc : topDocs.scoreDocs) {
-
-            builder.addHits(toHit(scoreDoc));
-        }
-        return builder.build();
-    }
-
     @Override
     public void setUpdateSequence(final SetUpdateSeq request, final StreamObserver<ServiceResponse> responseObserver) {
         final SearchHandler handler = getOrOpen(request.getIndex());
@@ -203,13 +172,13 @@ public final class Search extends SearchGrpc.SearchImplBase {
             @Override
             public void onNext(final DocumentUpdate request) {
                 final SearchHandler handler = getOrOpen(request.getIndex());
-                final Term term = toTerm(request.getTerm());
+                final Term idTerm = new Term("_id", request.getId());
 
                 try {
                     if (request.getFieldsCount() == 0) {
-                        handler.deleteDocuments(term);
+                        handler.deleteDocuments(idTerm);
                     } else {
-                        handler.updateDocument(term, toDoc(request.getFieldsList()));
+                        handler.updateDocument(idTerm, toDoc(request.getFieldsList()));
                     }
                 } catch (final IOException e) {
                     responseObserver.onError(Status.UNKNOWN.asException());
@@ -261,10 +230,10 @@ public final class Search extends SearchGrpc.SearchImplBase {
         return new Term(searchTerm.getField(), searchTerm.getValue());
     }
 
-    private Document toDoc(final List<IndexableField> fields) throws IOException {
+    private Document toDoc(final List<DocumentField> fields) throws IOException {
         final DocumentBuilder builder = new DocumentBuilder();
 
-        for (final IndexableField field : fields) {
+        for (final DocumentField field : fields) {
             final String name = field.getName();
             final FieldValue value = field.getValue();
             final boolean analyzed = field.getAnalyzed();
