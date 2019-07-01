@@ -94,7 +94,7 @@ public final class Search extends SearchGrpc.SearchImplBase {
             responseObserver.onNext(OK);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            responseObserver.onError(Status.UNKNOWN.asException());
+            responseObserver.onError(Status.fromThrowable(e).asException());
         }
     }
 
@@ -106,7 +106,7 @@ public final class Search extends SearchGrpc.SearchImplBase {
             responseObserver.onNext(updateSeq);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            responseObserver.onError(Status.ABORTED.asException());
+            responseObserver.onError(Status.fromThrowable(e).asException());
         }
     }
 
@@ -135,9 +135,9 @@ public final class Search extends SearchGrpc.SearchImplBase {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            responseObserver.onError(Status.ABORTED.asException());
+            responseObserver.onError(Status.fromThrowable(e).asException());
         } catch (final ParseException e) {
-            responseObserver.onError(Status.ABORTED.asException());
+            responseObserver.onError(Status.fromThrowable(e).asException());
         }
     }
 
@@ -162,9 +162,9 @@ public final class Search extends SearchGrpc.SearchImplBase {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            responseObserver.onError(Status.ABORTED.asException());
+            responseObserver.onError(Status.fromThrowable(e).asException());
         } catch (final ParseException e) {
-            responseObserver.onError(Status.ABORTED.asException());
+            responseObserver.onError(Status.fromThrowable(e).asException());
         }
     }
 
@@ -174,7 +174,7 @@ public final class Search extends SearchGrpc.SearchImplBase {
             final SearchHandler handler = getOrOpen(request.getIndex());
             handler.setPendingUpdateSeq(request.getSeq());
         } catch (final IOException e) {
-            responseObserver.onError(Status.ABORTED.asException());
+            responseObserver.onError(Status.fromThrowable(e).asException());
         }
         responseObserver.onNext(OK);
         responseObserver.onCompleted();
@@ -202,7 +202,7 @@ public final class Search extends SearchGrpc.SearchImplBase {
                         handler.updateDocument(idTerm, doc);
                     }
                 } catch (final IOException e) {
-                    responseObserver.onError(Status.ABORTED.asException());
+                    responseObserver.onError(Status.fromThrowable(e).asException());
                 }
             }
 
