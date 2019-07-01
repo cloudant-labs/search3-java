@@ -19,11 +19,16 @@ import static com.cloudant.search3.Converters.toFieldSet;
 import static com.cloudant.search3.Converters.toQuery;
 import static com.cloudant.search3.Converters.toSort;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexNotFoundException;
@@ -52,17 +57,42 @@ import com.google.protobuf.ByteString;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
-public final class Search extends SearchGrpc.SearchImplBase {
+public final class Search extends SearchGrpc.SearchImplBase implements Closeable {
+
+    private static final int COMMIT_INTERVAL = 5_000;
+
+    private static final Logger LOGGER = LogManager.getLogger();
+
+    private class CommitTask extends TimerTask {
+
+        private final SearchHandler handler;
+
+        private CommitTask(final SearchHandler handler) {
+            this.handler = handler;
+        }
+
+        @Override
+        public void run() {
+            try {
+                handler.commit();
+            } catch (final IOException e) {
+                // Ignored.
+            }
+        }
+
+    }
 
     private static final ServiceResponse OK = ServiceResponse.newBuilder().setCode(0).build();
 
     private final Database db;
     private final SearchHandlerFactory searchHandlerFactory;
     private final ConcurrentMap<Subspace, SearchHandler> handlers = new ConcurrentHashMap<Subspace, SearchHandler>();
+    private final Timer timer;
 
     public Search(final Database db, final SearchHandlerFactory searchHandlerFactory) {
         this.db = db;
         this.searchHandlerFactory = searchHandlerFactory;
+        this.timer = new Timer();
     }
 
     @Override
@@ -78,7 +108,9 @@ public final class Search extends SearchGrpc.SearchImplBase {
             });
             responseObserver.onNext(OK);
             responseObserver.onCompleted();
+            LOGGER.info("Deleted index {}.", subspace);
         } catch (final IOException e) {
+            LOGGER.warn("Failed to delete index {}.", request);
             responseObserver.onError(Status.fromThrowable(e).asException());
         }
     }
@@ -205,11 +237,27 @@ public final class Search extends SearchGrpc.SearchImplBase {
         };
     }
 
+    @Override
+    public void close() {
+        timer.cancel();
+        handlers.forEach((index, handler) -> {
+            try {
+                handler.close();
+            } catch (final IOException e) {
+                // Ignored
+            }
+        });
+        handlers.clear();
+    }
+
     private SearchHandler getOrOpen(final Index index) throws IndexNotFoundException {
         final Subspace indexSubspace = toSubspace(index);
         final SearchHandler result = handlers.computeIfAbsent(indexSubspace, key -> {
             try {
-                return searchHandlerFactory.open(db, key, new StandardAnalyzer());
+                final SearchHandler handler = searchHandlerFactory.open(db, key, new StandardAnalyzer());
+                LOGGER.info("Opened index {}.", handler);
+                timer.schedule(new CommitTask(handler), COMMIT_INTERVAL, COMMIT_INTERVAL);
+                return handler;
             } catch (final IOException e) {
                 return null;
             }

@@ -16,6 +16,8 @@ package com.cloudant.search3;
 
 import java.io.IOException;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Term;
@@ -45,6 +47,8 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
         };
     }
 
+    private final String toString;
+    private final Logger logger;
     private final Database db;
     private final byte[] updateSeqKey;
     private final FDBIndexWriter writer;
@@ -53,6 +57,8 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     private String pendingUpdateSeq;
 
     private FDBIndexWriterSearchHandler(final Database db, final Subspace index, final Analyzer analyzer) {
+        this.toString = String.format("FDBIndexWriterSearchHandler(%s)", index);
+        this.logger = LogManager.getLogger(toString);
         this.db = db;
         this.updateSeqKey = index.pack("_update_seq");
         writer = new FDBIndexWriter(db, index, analyzer);
@@ -67,11 +73,15 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
 
     @Override
     public void commit() throws IOException {
+        if (pendingUpdateSeq == null) {
+            return;
+        }
         final byte[] value = Tuple.from(pendingUpdateSeq).pack();
         db.run(txn -> {
             txn.set(updateSeqKey, value);
             return null;
         });
+        logger.info("committed at update sequence \"{}\".", pendingUpdateSeq);
         this.pendingUpdateSeq = null;
     }
 
@@ -83,7 +93,12 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     @Override
     public String getUpdateSeq() {
         return db.read(txn -> {
-            return txn.get(updateSeqKey).thenApply(v -> Tuple.fromBytes(v).getString(0));
+            return txn.get(updateSeqKey).thenApply(v -> {
+                if (v == null) {
+                    return "0";
+                }
+                return Tuple.fromBytes(v).getString(0);
+            });
         }).join();
     }
 
@@ -114,6 +129,11 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
         return reader.run(db, () -> {
             return f.apply(searcher);
         });
+    }
+
+    @Override
+    public String toString() {
+        return toString;
     }
 
 }

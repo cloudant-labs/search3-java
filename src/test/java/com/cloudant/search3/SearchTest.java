@@ -62,12 +62,6 @@ public class SearchTest extends BaseFDBTest {
             this.completed = true;
         }
 
-        @Override
-        public String toString() {
-            return String
-                    .format("lastValue: %s, lastThrowable: %s, completed: %b\n", lastValue, lastThrowable, completed);
-        }
-
     };
 
     @Parameters
@@ -85,30 +79,31 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void indexAndSearch() throws Exception {
-        final Search search = new Search(DB, factory);
+        try (final Search search = new Search(DB, factory)) {
 
-        final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
+            final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
-        // Index something.
-        final CollectingStreamObserver<ServiceResponse> updateCollector = new CollectingStreamObserver<ServiceResponse>();
-        final StreamObserver<DocumentUpdate> stream = search.update(updateCollector);
-        final DocumentUpdate docUpdate = DocumentUpdate.newBuilder().setIndex(index).setId("foobar")
-                .addFields(field("foo", "bar baz", true)).build();
-        stream.onNext(docUpdate);
-        stream.onCompleted();
-        assertNotNull(updateCollector.lastValue);
-        assertNull(updateCollector.lastThrowable);
-        assertTrue(updateCollector.completed);
+            // Index something.
+            final CollectingStreamObserver<ServiceResponse> serviceResponseCollector = new CollectingStreamObserver<ServiceResponse>();
+            final StreamObserver<DocumentUpdate> stream = search.update(serviceResponseCollector);
+            final DocumentUpdate docUpdate = DocumentUpdate.newBuilder().setIndex(index).setId("foobar")
+                    .addFields(field("foo", "bar baz", true)).build();
+            stream.onNext(docUpdate);
+            stream.onCompleted();
+            assertNotNull(serviceResponseCollector.lastValue);
+            assertNull(serviceResponseCollector.lastThrowable);
+            assertTrue(serviceResponseCollector.completed);
 
-        // Find it with a search?
-        final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar").build();
+            // Find it with a search?
+            final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar").build();
 
-        final CollectingStreamObserver<SearchResponse> searchResponseCollector = new CollectingStreamObserver<SearchResponse>();
-        search.search(searchRequest, searchResponseCollector);
+            final CollectingStreamObserver<SearchResponse> searchResponseCollector = new CollectingStreamObserver<SearchResponse>();
+            search.search(searchRequest, searchResponseCollector);
 
-        final SearchResponse searchResponse = searchResponseCollector.lastValue;
-        assertEquals(1, searchResponse.getMatches());
-        assertEquals("foobar", searchResponse.getHits(0).getId());
+            final SearchResponse searchResponse = searchResponseCollector.lastValue;
+            assertEquals(1, searchResponse.getMatches());
+            assertEquals("foobar", searchResponse.getHits(0).getId());
+        }
     }
 
     private DocumentField field(final String name, final String value, final boolean analyzed) {

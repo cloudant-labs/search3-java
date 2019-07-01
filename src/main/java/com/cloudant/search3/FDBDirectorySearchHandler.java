@@ -18,6 +18,8 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriter;
@@ -64,13 +66,17 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private static final int PAGE_SIZE = 10_000;
     private static final int TXN_SIZE = 10 * PAGE_SIZE;
 
+    private final String toString;
+    private final Logger logger;
     private final IndexWriter writer;
     private final SearcherManager manager;
 
     private String pendingUpdateSeq;
-    private String updateSeq;
+    private String updateSeq = "0";
 
     private FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager) {
+        this.toString = String.format("FDBDirectorySearchHandler(%s)", writer.getDirectory());
+        this.logger = LogManager.getLogger(writer.getDirectory().toString());
         this.writer = writer;
         this.manager = manager;
     }
@@ -125,13 +131,19 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     @Override
     public void commit() throws IOException {
         if (pendingUpdateSeq == null) {
-            throw new IllegalStateException("Cannot commit without a new update sequence");
+            return;
         }
         final Map<String, String> commitData = Collections.singletonMap("update_seq", pendingUpdateSeq);
         this.writer.setLiveCommitData(commitData.entrySet());
-        this.writer.commit();
-        this.updateSeq = this.pendingUpdateSeq;
-        this.pendingUpdateSeq = null;
+
+        try {
+            this.writer.commit();
+            this.updateSeq = this.pendingUpdateSeq;
+            this.pendingUpdateSeq = null;
+            logger.info("committed at update sequence \"{}\".", updateSeq);
+        } catch (final IOException e) {
+            logger.catching(e);
+        }
     }
 
     private static IndexWriterConfig indexWriterConfig(final Analyzer analyzer) {
@@ -152,6 +164,11 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         } finally {
             manager.release(searcher);
         }
+    }
+
+    @Override
+    public String toString() {
+        return toString;
     }
 
 }
