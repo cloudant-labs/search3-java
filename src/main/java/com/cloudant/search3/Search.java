@@ -57,10 +57,12 @@ public final class Search extends SearchGrpc.SearchImplBase {
     private static final ServiceResponse OK = ServiceResponse.newBuilder().setCode(0).build();
 
     private final Database db;
+    private final SearchHandlerFactory searchHandlerFactory;
     private final ConcurrentMap<Subspace, SearchHandler> handlers = new ConcurrentHashMap<Subspace, SearchHandler>();
 
-    public Search(final Database db) {
+    public Search(final Database db, final SearchHandlerFactory searchHandlerFactory) {
         this.db = db;
+        this.searchHandlerFactory = searchHandlerFactory;
     }
 
     @Override
@@ -207,7 +209,7 @@ public final class Search extends SearchGrpc.SearchImplBase {
         final Subspace indexSubspace = toSubspace(index);
         final SearchHandler result = handlers.computeIfAbsent(indexSubspace, key -> {
             try {
-                return SearchHandler.open(db, key, new StandardAnalyzer());
+                return searchHandlerFactory.open(db, key, new StandardAnalyzer());
             } catch (final IOException e) {
                 return null;
             }

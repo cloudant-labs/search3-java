@@ -19,7 +19,13 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Arrays;
+import java.util.Collection;
+
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameters;
 
 import com.cloudant.search3.grpc.Search3.DocumentField;
 import com.cloudant.search3.grpc.Search3.DocumentUpdate;
@@ -32,6 +38,7 @@ import com.google.protobuf.ByteString;
 
 import io.grpc.stub.StreamObserver;
 
+@RunWith(Parameterized.class)
 public class SearchTest extends BaseFDBTest {
 
     private static class CollectingStreamObserver<T> implements StreamObserver<T> {
@@ -63,9 +70,22 @@ public class SearchTest extends BaseFDBTest {
 
     };
 
+    @Parameters
+    public static Collection<SearchHandlerFactory> factories() {
+        return Arrays.asList(
+                new SearchHandlerFactory[] { FDBIndexWriterSearchHandler.factory(),
+                        FDBDirectorySearchHandler.factory() });
+    }
+
+    private final SearchHandlerFactory factory;
+
+    public SearchTest(final SearchHandlerFactory factory) {
+        this.factory = factory;
+    }
+
     @Test
     public void indexAndSearch() throws Exception {
-        final Search search = new Search(DB);
+        final Search search = new Search(DB, factory);
 
         final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 

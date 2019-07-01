@@ -38,7 +38,7 @@ public class Main {
         FDB.selectAPIVersion(fdbApiVersion);
         final Database db = FDB.instance().open();
 
-        final Search foo = new Search(db);
+        final Search foo = new Search(db, FDBDirectorySearchHandler.factory());
 
         final SslContext sslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
                 .trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
