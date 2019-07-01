@@ -52,6 +52,9 @@ import com.cloudant.search3.grpc.Search3.SearchResponse;
  */
 public final class SearchHandler implements AutoCloseable {
 
+    private static final Set<String> ID_SET = Collections.singleton("_id");
+    private static final int DEFAULT_N = 25;
+
     @FunctionalInterface
     private interface IOFunction<T, R> {
         R apply(T t) throws IOException;
@@ -90,11 +93,11 @@ public final class SearchHandler implements AutoCloseable {
     public SearchResponse search(final Query query, final int n, final Set<String> fieldsToLoad, final boolean staleOk)
             throws IOException {
         return withSearcher(staleOk, searcher -> {
-            final TopDocs topDocs = searcher.search(query, n);
+            final TopDocs topDocs = searcher.search(query, correctN(n));
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
             responseBuilder.setMatches(topDocs.totalHits.value);
             for (int i = 0; i < topDocs.scoreDocs.length; i++) {
-                final Document doc = searcher.doc(topDocs.scoreDocs[i].doc, fieldsToLoad);
+                final Document doc = searcher.doc(topDocs.scoreDocs[i].doc, correctFieldsToLoad(fieldsToLoad));
                 final Hit.Builder hitBuilder = Hit.newBuilder();
                 hitBuilder.setId(doc.get("_id"));
                 hitBuilder.addOrder(FieldValue.newBuilder().setDoubleValue(topDocs.scoreDocs[i].score));
@@ -112,12 +115,12 @@ public final class SearchHandler implements AutoCloseable {
             final Set<String> fieldsToLoad,
             final boolean staleOk) throws IOException {
         return withSearcher(staleOk, searcher -> {
-            final TopFieldDocs topFieldDocs = searcher.search(query, n, sort);
+            final TopFieldDocs topFieldDocs = searcher.search(query, correctN(n), sort);
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
             responseBuilder.setMatches(topFieldDocs.totalHits.value);
             for (int i = 0; i < topFieldDocs.scoreDocs.length; i++) {
                 final FieldDoc fieldDoc = (FieldDoc) topFieldDocs.scoreDocs[i];
-                final Document doc = searcher.doc(fieldDoc.doc, fieldsToLoad);
+                final Document doc = searcher.doc(fieldDoc.doc, correctFieldsToLoad(fieldsToLoad));
                 final Hit.Builder hitBuilder = Hit.newBuilder();
                 hitBuilder.setId(doc.get("_id"));
                 for (int j = 0; j < fieldDoc.fields.length; j++) {
@@ -217,6 +220,18 @@ public final class SearchHandler implements AutoCloseable {
             hitFieldBuilder.setValue(fieldValueBuilder);
             hitBuilder.addFields(hitFieldBuilder);
         }
+    }
+
+    private int correctN(final int n) {
+        return n == 0 ? DEFAULT_N : n;
+    }
+
+    private Set<String> correctFieldsToLoad(final Set<String> fieldsToLoad) {
+        if (fieldsToLoad == null) {
+            return ID_SET;
+        }
+        fieldsToLoad.add("_id");
+        return fieldsToLoad;
     }
 
 }

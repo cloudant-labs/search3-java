@@ -20,18 +20,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.index.IndexNotFoundException;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.BytesRef;
@@ -43,21 +46,28 @@ import com.cloudant.search3.grpc.Search3.DocumentUpdate;
 import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
-import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
-import com.cloudant.search3.grpc.Search3.SearchTerm;
 import com.cloudant.search3.grpc.Search3.ServiceResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.cloudant.search3.grpc.SearchGrpc;
+import com.google.protobuf.ByteString;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
 public final class Search extends SearchGrpc.SearchImplBase {
+
+    private static final SortField INVERSE_FIELD_SCORE = new SortField(null, SortField.Type.SCORE, true);
+    private static final SortField INVERSE_FIELD_DOC = new SortField(null, SortField.Type.DOC, true);
+
+    private static final Pattern SORT_FIELD_RE = Pattern.compile("^([-+])?([\\.\\w]+)(?:<(\\w+)>)?$");
+    private static final String FP = "([-+]?[0-9]+(?:\\.[0-9]+)?)";
+    private static final Pattern DISTANCE_RE = Pattern
+            .compile("^([-+])?<distance,([\\.\\w]+),([\\.\\w]+),%s,%s,(mi|km)>$".format(FP, FP));
 
     private static final ServiceResponse OK = ServiceResponse.newBuilder().setCode(0).build();
 
@@ -72,26 +82,32 @@ public final class Search extends SearchGrpc.SearchImplBase {
 
     @Override
     public void delete(final Index request, final StreamObserver<ServiceResponse> responseObserver) {
-        final SearchHandler handler = getOrOpen(request);
+        final Subspace subspace;
         try {
+            final SearchHandler handler = getOrOpen(request);
+            subspace = toSubspace(request);
             handler.close();
-        } catch (IOException e) {
+            db.run(txn -> {
+                txn.clear(subspace.range());
+                return null;
+            });
+            responseObserver.onNext(OK);
+            responseObserver.onCompleted();
+        } catch (final IOException e) {
             responseObserver.onError(Status.UNKNOWN.asException());
         }
-        db.run(txn -> {
-            txn.clear(toSubspace(request).range());
-            return null;
-        });
-        responseObserver.onNext(OK);
-        responseObserver.onCompleted();
     }
 
     @Override
     public void getUpdateSequence(final Index request, final StreamObserver<UpdateSeq> responseObserver) {
-        final SearchHandler handler = getOrOpen(request);
-        final UpdateSeq updateSeq = UpdateSeq.newBuilder().setSeq(handler.getUpdateSeq()).build();
-        responseObserver.onNext(updateSeq);
-        responseObserver.onCompleted();
+        try {
+            final SearchHandler handler = getOrOpen(request);
+            final UpdateSeq updateSeq = UpdateSeq.newBuilder().setSeq(handler.getUpdateSeq()).build();
+            responseObserver.onNext(updateSeq);
+            responseObserver.onCompleted();
+        } catch (final IOException e) {
+            responseObserver.onError(Status.ABORTED.asException());
+        }
     }
 
     @Override
@@ -119,13 +135,10 @@ public final class Search extends SearchGrpc.SearchImplBase {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            responseObserver.onError(Status.UNKNOWN.asException());
-            return;
+            responseObserver.onError(Status.ABORTED.asException());
         } catch (final ParseException e) {
-            responseObserver.onError(Status.UNKNOWN.asException());
-            return;
+            responseObserver.onError(Status.ABORTED.asException());
         }
-
     }
 
     @Override
@@ -149,18 +162,20 @@ public final class Search extends SearchGrpc.SearchImplBase {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            responseObserver.onError(Status.UNKNOWN.asException());
-            return;
+            responseObserver.onError(Status.ABORTED.asException());
         } catch (final ParseException e) {
-            responseObserver.onError(Status.UNKNOWN.asException());
-            return;
+            responseObserver.onError(Status.ABORTED.asException());
         }
     }
 
     @Override
     public void setUpdateSequence(final SetUpdateSeq request, final StreamObserver<ServiceResponse> responseObserver) {
-        final SearchHandler handler = getOrOpen(request.getIndex());
-        handler.setPendingUpdateSeq(request.getSeq());
+        try {
+            final SearchHandler handler = getOrOpen(request.getIndex());
+            handler.setPendingUpdateSeq(request.getSeq());
+        } catch (final IOException e) {
+            responseObserver.onError(Status.ABORTED.asException());
+        }
         responseObserver.onNext(OK);
         responseObserver.onCompleted();
     }
@@ -171,17 +186,23 @@ public final class Search extends SearchGrpc.SearchImplBase {
 
             @Override
             public void onNext(final DocumentUpdate request) {
-                final SearchHandler handler = getOrOpen(request.getIndex());
-                final Term idTerm = new Term("_id", request.getId());
-
                 try {
+                    final SearchHandler handler = getOrOpen(request.getIndex());
+
+                    final String id = request.getId();
+                    if (id == null || id.isEmpty()) {
+                        throw new IOException("doc id is missing.");
+                    }
+                    final Term idTerm = new Term("_id", id);
+
                     if (request.getFieldsCount() == 0) {
                         handler.deleteDocuments(idTerm);
                     } else {
-                        handler.updateDocument(idTerm, toDoc(request.getFieldsList()));
+                        final Document doc = toDoc(request.getId(), request.getFieldsList());
+                        handler.updateDocument(idTerm, doc);
                     }
                 } catch (final IOException e) {
-                    responseObserver.onError(Status.UNKNOWN.asException());
+                    responseObserver.onError(Status.ABORTED.asException());
                 }
             }
 
@@ -199,7 +220,7 @@ public final class Search extends SearchGrpc.SearchImplBase {
         };
     }
 
-    private SearchHandler getOrOpen(final Index index) {
+    private SearchHandler getOrOpen(final Index index) throws IndexNotFoundException {
         final Subspace indexSubspace = toSubspace(index);
         final SearchHandler result = handlers.computeIfAbsent(indexSubspace, key -> {
             try {
@@ -209,29 +230,67 @@ public final class Search extends SearchGrpc.SearchImplBase {
             }
         });
         if (result == null) {
-            throw new IllegalArgumentException(index + " is not an index.");
+            throw new IndexNotFoundException(index + " is not an index.");
         }
         return result;
     }
 
-    private Subspace toSubspace(final Index index) {
-        return new Subspace(index.getPrefix().toByteArray());
+    private Subspace toSubspace(final Index index) throws IndexNotFoundException {
+        final ByteString prefix = index.getPrefix();
+        if (prefix.isEmpty()) {
+            throw new IndexNotFoundException("Index not specified by prefix.");
+        }
+        return new Subspace(prefix.toByteArray());
     }
 
-    private Sort toSort(final com.cloudant.search3.grpc.Search3.Sort sort) {
-        final Sort result = new Sort();
-        sort.getFieldsList().forEach(str -> {
+    private Sort toSort(final com.cloudant.search3.grpc.Search3.Sort sort) throws ParseException {
+        final SortField[] sortFields = new SortField[sort.getFieldsCount()];
+        for (int i = 0; i < sort.getFieldsCount(); i++) {
+            switch (sort.getFields(i)) {
+            case "<score>":
+                sortFields[i] = INVERSE_FIELD_SCORE;
+                continue;
+            case "-<score>":
+                sortFields[i] = SortField.FIELD_SCORE;
+                continue;
+            case "<doc>":
+                sortFields[i] = SortField.FIELD_DOC;
+                continue;
+            case "-<doc>":
+                sortFields[i] = INVERSE_FIELD_DOC;
+                continue;
+            }
 
-        });
-        return result;
+            Matcher m = DISTANCE_RE.matcher(sort.getFields(i));
+            if (m.matches()) {
+                throw new ParseException("sort by distance not yet supported.");
+            }
+
+            m = SORT_FIELD_RE.matcher(sort.getFields(i));
+            if (m.matches()) {
+                final String fieldTypeStr = m.group(3) == null ? "number" : m.group(3);
+                final SortField.Type fieldType;
+                switch (fieldTypeStr) {
+                case "string":
+                    fieldType = SortField.Type.STRING;
+                    break;
+                case "number":
+                    fieldType = SortField.Type.DOUBLE;
+                    break;
+                default:
+                    throw new ParseException("Unrecognized type: " + m.group(3));
+                }
+                final boolean reverse = "-".equals(m.group(1));
+
+                sortFields[i] = new SortField(m.group(2), fieldType, reverse);
+            }
+        }
+        return new Sort(sortFields);
     }
 
-    private Term toTerm(final SearchTerm searchTerm) {
-        return new Term(searchTerm.getField(), searchTerm.getValue());
-    }
-
-    private Document toDoc(final List<DocumentField> fields) throws IOException {
+    private Document toDoc(final String id, final List<DocumentField> fields) throws IOException {
         final DocumentBuilder builder = new DocumentBuilder();
+        builder.addString("_id", id, true);
 
         for (final DocumentField field : fields) {
             final String name = field.getName();
@@ -262,26 +321,19 @@ public final class Search extends SearchGrpc.SearchImplBase {
         return builder.build();
     }
 
-    private Hit toHit(final ScoreDoc scoreDoc) {
-        final Hit.Builder builder = Hit.newBuilder();
-        builder.setOrder(0, FieldValue.newBuilder().setDoubleValue(scoreDoc.score));
-        return builder.build();
-    }
-
+    /**
+     * Does "partition" even make sense for couch-on-fdb?
+     */
     private Query toQuery(final String queryString, final String partition) throws ParseException {
-        final Query query = queryParser.parse(queryString);
+        final Query baseQuery = queryParser.parse(queryString);
         if (partition.length() > 0) {
-            return addPartition(query, partition);
+            final BooleanQuery.Builder builder = new BooleanQuery.Builder();
+            builder.add(new TermQuery(new Term("_partition", partition)), Occur.MUST);
+            builder.add(baseQuery, Occur.MUST);
+            return builder.build();
         } else {
-            return query;
+            return baseQuery;
         }
-    }
-
-    private Query addPartition(final Query query, final String partition) {
-        final BooleanQuery.Builder builder = new BooleanQuery.Builder();
-        builder.add(new TermQuery(new Term("_partition", partition)), Occur.MUST);
-        builder.add(query, Occur.MUST);
-        return builder.build();
     }
 
 }
