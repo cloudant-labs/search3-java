@@ -14,36 +14,29 @@
 
 package com.cloudant.search3;
 
+import static com.cloudant.search3.Converters.toDoc;
+import static com.cloudant.search3.Converters.toFieldSet;
+import static com.cloudant.search3.Converters.toQuery;
+import static com.cloudant.search3.Converters.toSort;
+
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexNotFoundException;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.queryparser.classic.QueryParser;
-import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.SortField;
-import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.BytesRef;
 
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
-import com.cloudant.search3.grpc.Search3.DocumentField;
 import com.cloudant.search3.grpc.Search3.DocumentUpdate;
-import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Index;
@@ -61,19 +54,9 @@ import io.grpc.stub.StreamObserver;
 
 public final class Search extends SearchGrpc.SearchImplBase {
 
-    private static final SortField INVERSE_FIELD_SCORE = new SortField(null, SortField.Type.SCORE, true);
-    private static final SortField INVERSE_FIELD_DOC = new SortField(null, SortField.Type.DOC, true);
-
-    private static final Pattern SORT_FIELD_RE = Pattern.compile("^([-+])?([\\.\\w]+)(?:<(\\w+)>)?$");
-    private static final String FP = "([-+]?[0-9]+(?:\\.[0-9]+)?)";
-    private static final Pattern DISTANCE_RE = Pattern
-            .compile("^([-+])?<distance,([\\.\\w]+),([\\.\\w]+),%s,%s,(mi|km)>$".format(FP, FP));
-
     private static final ServiceResponse OK = ServiceResponse.newBuilder().setCode(0).build();
 
     private final Database db;
-    private final Analyzer analyzer = new StandardAnalyzer(); // TODO specify by index.
-    private final QueryParser queryParser = new QueryParser("default", analyzer);
     private final ConcurrentMap<Subspace, SearchHandler> handlers = new ConcurrentHashMap<Subspace, SearchHandler>();
 
     public Search(final Database db) {
@@ -118,16 +101,16 @@ public final class Search extends SearchGrpc.SearchImplBase {
     @Override
     public void search(final SearchRequest request, final StreamObserver<SearchResponse> responseObserver) {
         try {
-            final Query query = toQuery(request.getQuery(), request.getPartition());
+            final Query query = toQuery(request);
             final int limit = request.getLimit();
-            final Set<String> fieldsToLoad = new HashSet<String>(request.getIncludeFieldsList());
+            final Set<String> fieldsToLoad = toFieldSet(request);
             final boolean staleOk = request.getStale();
 
             final SearchHandler handler = getOrOpen(request.getIndex());
 
             final SearchResponse response;
             if (request.hasSort()) {
-                final Sort sort = toSort(request.getSort());
+                final Sort sort = toSort(request);
                 response = handler.search(query, limit, sort, fieldsToLoad, staleOk);
             } else {
                 response = handler.search(query, limit, fieldsToLoad, staleOk);
@@ -146,11 +129,11 @@ public final class Search extends SearchGrpc.SearchImplBase {
             final GroupSearchRequest request,
             final StreamObserver<GroupSearchResponse> responseObserver) {
         try {
-            final Query query = toQuery(request.getQuery(), "");
+            final Query query = toQuery(request);
             final int limit = request.getLimit();
             final boolean staleOk = request.getStale();
             final String groupBy = request.getGroupBy();
-            final Sort groupSort = toSort(request.getGroupSort());
+            final Sort groupSort = toSort(request);
             final int groupOffset = request.getGroupOffset();
             final int groupLimit = request.getGroupLimit();
 
@@ -198,7 +181,7 @@ public final class Search extends SearchGrpc.SearchImplBase {
                     if (request.getFieldsCount() == 0) {
                         handler.deleteDocuments(idTerm);
                     } else {
-                        final Document doc = toDoc(request.getId(), request.getFieldsList());
+                        final Document doc = toDoc(request);
                         handler.updateDocument(idTerm, doc);
                     }
                 } catch (final IOException e) {
@@ -241,99 +224,6 @@ public final class Search extends SearchGrpc.SearchImplBase {
             throw new IndexNotFoundException("Index not specified by prefix.");
         }
         return new Subspace(prefix.toByteArray());
-    }
-
-    private Sort toSort(final com.cloudant.search3.grpc.Search3.Sort sort) throws ParseException {
-        final SortField[] sortFields = new SortField[sort.getFieldsCount()];
-        for (int i = 0; i < sort.getFieldsCount(); i++) {
-            switch (sort.getFields(i)) {
-            case "<score>":
-                sortFields[i] = INVERSE_FIELD_SCORE;
-                continue;
-            case "-<score>":
-                sortFields[i] = SortField.FIELD_SCORE;
-                continue;
-            case "<doc>":
-                sortFields[i] = SortField.FIELD_DOC;
-                continue;
-            case "-<doc>":
-                sortFields[i] = INVERSE_FIELD_DOC;
-                continue;
-            }
-
-            Matcher m = DISTANCE_RE.matcher(sort.getFields(i));
-            if (m.matches()) {
-                throw new ParseException("sort by distance not yet supported.");
-            }
-
-            m = SORT_FIELD_RE.matcher(sort.getFields(i));
-            if (m.matches()) {
-                final String fieldTypeStr = m.group(3) == null ? "number" : m.group(3);
-                final SortField.Type fieldType;
-                switch (fieldTypeStr) {
-                case "string":
-                    fieldType = SortField.Type.STRING;
-                    break;
-                case "number":
-                    fieldType = SortField.Type.DOUBLE;
-                    break;
-                default:
-                    throw new ParseException("Unrecognized type: " + m.group(3));
-                }
-                final boolean reverse = "-".equals(m.group(1));
-
-                sortFields[i] = new SortField(m.group(2), fieldType, reverse);
-            }
-        }
-        return new Sort(sortFields);
-    }
-
-    private Document toDoc(final String id, final List<DocumentField> fields) throws IOException {
-        final DocumentBuilder builder = new DocumentBuilder();
-        builder.addString("_id", id, true);
-
-        for (final DocumentField field : fields) {
-            final String name = field.getName();
-            final FieldValue value = field.getValue();
-            final boolean analyzed = field.getAnalyzed();
-            final boolean stored = field.getStored();
-            final boolean facet = field.getFacet();
-
-            switch (value.getValueOneofCase()) {
-            case BOOL_VALUE:
-                builder.addBoolean(name, value.getBoolValue(), stored);
-                break;
-            case DOUBLE_VALUE:
-                builder.addDouble(name, value.getDoubleValue(), stored);
-                break;
-            case STRING_VALUE:
-                if (analyzed) {
-                    builder.addText(name, value.getStringValue(), stored, facet);
-                } else {
-                    builder.addString(name, value.getStringValue(), stored);
-                }
-                break;
-            default:
-                // Ignore field with no value.
-                break;
-            }
-        }
-        return builder.build();
-    }
-
-    /**
-     * Does "partition" even make sense for couch-on-fdb?
-     */
-    private Query toQuery(final String queryString, final String partition) throws ParseException {
-        final Query baseQuery = queryParser.parse(queryString);
-        if (partition.length() > 0) {
-            final BooleanQuery.Builder builder = new BooleanQuery.Builder();
-            builder.add(new TermQuery(new Term("_partition", partition)), Occur.MUST);
-            builder.add(baseQuery, Occur.MUST);
-            return builder.build();
-        } else {
-            return baseQuery;
-        }
     }
 
 }
