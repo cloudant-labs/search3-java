@@ -1,21 +1,19 @@
 // -*-java-*-
 syntax = "proto3";
-//option java_multiple_files = true;
+import "google/protobuf/any.proto";
 option java_package = "com.cloudant.search3.grpc";
 
 service Search {
     // Index operations
-    rpc Delete(Index) returns (ServiceResponse);
-    rpc GetUpdateSequence(Index) returns (UpdateSeq);
+    rpc Delete(Index) returns (SearchStatus);
     rpc Info(Index) returns (InfoResponse);
-    rpc SetUpdateSequence(SetUpdateSeq) returns (ServiceResponse);
 
     // Read operations
     rpc Search(SearchRequest) returns (SearchResponse);
     rpc GroupSearch(GroupSearchRequest) returns (GroupSearchResponse);
 
     // Write operations
-    rpc Update(DocumentUpdate) returns (ServiceResponse);    
+    rpc Update(stream DocumentUpdate) returns (SearchStatus);
 }
 
 // Uniquely identifies a search index.
@@ -40,18 +38,20 @@ message SearchRequest {
     Index index = 1;
     string query = 2;
     uint32 limit = 3;
-    bool stale = 4;
-    Sort sort = 5;
-    string partition = 6;
-    repeated string counts = 7;
-    string ranges = 8;
-    string drilldown = 9;
-    repeated string include_fields = 10;
+    string bookmark = 4;
+    bool stale = 5;
+    Sort sort = 6;
+    string partition = 7;
+    repeated string counts = 8;
+    string ranges = 9;
+    string drilldown = 10;
+    repeated string include_fields = 11;
 }
 
 message SearchResponse {
-    uint64 matches = 1;
-    repeated Hit hits = 2;
+    string bookmark = 1;
+    uint64 matches = 2;
+    repeated Hit hits = 3;
 }
 
 message GroupSearchRequest {
@@ -123,19 +123,13 @@ message SearchTerm {
 message DocumentUpdate {
     Index index = 1;
     string id = 2;
-    repeated DocumentField fields = 3; // leave empty to imply delete.
+    bool deleted = 3;
+    repeated DocumentField fields = 4;
 }
 
-message UpdateSeq {
-    string seq = 1;
-}
-
-message SetUpdateSeq {
-    Index index = 1;
-    string seq = 2;
-}
-
-message ServiceResponse {
-    uint32 code = 1;
-    string reason = 2;
+message SearchStatus {
+    enum StatusCode {
+        OK = 0;
+    }
+    StatusCode code = 1;
 }

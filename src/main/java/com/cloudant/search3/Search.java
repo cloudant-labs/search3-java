@@ -48,9 +48,8 @@ import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
-import com.cloudant.search3.grpc.Search3.ServiceResponse;
-import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
-import com.cloudant.search3.grpc.Search3.UpdateSeq;
+import com.cloudant.search3.grpc.Search3.SearchStatus;
+import com.cloudant.search3.grpc.Search3.SearchStatus.StatusCode;
 import com.cloudant.search3.grpc.SearchGrpc;
 import com.google.protobuf.ByteString;
 
@@ -82,7 +81,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     }
 
-    private static final ServiceResponse OK = ServiceResponse.newBuilder().setCode(0).build();
+    private static final SearchStatus OK = SearchStatus.newBuilder().setCode(StatusCode.OK).build();
 
     private final Database db;
     private final SearchHandlerFactory searchHandlerFactory;
@@ -96,7 +95,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void delete(final Index request, final StreamObserver<ServiceResponse> responseObserver) {
+    public void delete(final Index request, final StreamObserver<SearchStatus> responseObserver) {
         final Subspace subspace;
         try {
             final SearchHandler handler = getOrOpen(request);
@@ -112,19 +111,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         } catch (final IOException e) {
             LOGGER.catching(e);
             LOGGER.warn("Failed to delete index {}.", request);
-            responseObserver.onError(Status.fromThrowable(e).asException());
-        }
-    }
-
-    @Override
-    public void getUpdateSequence(final Index request, final StreamObserver<UpdateSeq> responseObserver) {
-        try {
-            final SearchHandler handler = getOrOpen(request);
-            final UpdateSeq updateSeq = UpdateSeq.newBuilder().setSeq(handler.getUpdateSeq()).build();
-            responseObserver.onNext(updateSeq);
-            responseObserver.onCompleted();
-        } catch (final IOException e) {
-            LOGGER.catching(e);
             responseObserver.onError(Status.fromThrowable(e).asException());
         }
     }
@@ -192,41 +178,47 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void setUpdateSequence(final SetUpdateSeq request, final StreamObserver<ServiceResponse> responseObserver) {
-        try {
-            final SearchHandler handler = getOrOpen(request.getIndex());
-            handler.setPendingUpdateSeq(request.getSeq());
-        } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
-        }
-        responseObserver.onNext(OK);
-        responseObserver.onCompleted();
-    }
+    public StreamObserver<DocumentUpdate> update(final StreamObserver<SearchStatus> responseObserver) {
+        return new StreamObserver<DocumentUpdate>() {
 
-    @Override
-    public void update(final DocumentUpdate request, final StreamObserver<ServiceResponse> responseObserver) {
-        try {
-            final SearchHandler handler = getOrOpen(request.getIndex());
+            @Override
+            public void onNext(final DocumentUpdate request) {
+                try {
+                    final SearchHandler handler = getOrOpen(request.getIndex());
 
-            final String id = request.getId();
-            if (id == null || id.isEmpty()) {
-                throw new IOException("doc id is missing.");
+                    final String id = request.getId();
+                    if (id == null || id.isEmpty()) {
+                        throw new IOException("doc id is missing.");
+                    }
+                    final Term idTerm = new Term("_id", id);
+
+                    if (request.getFieldsCount() == 0) {
+                        handler.deleteDocuments(idTerm);
+                    } else {
+                        final Document doc = toDoc(request);
+                        handler.updateDocument(idTerm, doc);
+                    }
+
+                } catch (final IOException e) {
+                    LOGGER.catching(e);
+                    responseObserver.onError(Status.fromThrowable(e).asException());
+                }
             }
-            final Term idTerm = new Term("_id", id);
 
-            if (request.getFieldsCount() == 0) {
-                handler.deleteDocuments(idTerm);
-            } else {
-                final Document doc = toDoc(request);
-                handler.updateDocument(idTerm, doc);
+            @Override
+            public void onError(Throwable t) {
+                LOGGER.catching(t);
+                responseObserver.onError(Status.fromThrowable(t).asException());
             }
-            responseObserver.onNext(OK);
-            responseObserver.onCompleted();
-        } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
-        }
+
+            @Override
+            public void onCompleted() {
+                responseObserver.onNext(OK);
+                responseObserver.onCompleted();
+            }
+
+        };
+
     }
 
     @Override
