@@ -16,6 +16,9 @@ package com.cloudant.search3;
 
 import java.io.File;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.FDB;
 
@@ -27,7 +30,12 @@ import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
 
 public class Main {
 
+    private static Logger LOGGER;
+
     public static void main(String[] args) throws Exception {
+        System.setProperty("java.util.logging.manager", "org.apache.logging.log4j.jul.LogManager");
+        LOGGER = LogManager.getLogger();
+
         final int port = Integer.parseInt(System.getProperty("port", "8443"));
         final int fdbApiVersion = Integer.parseInt(System.getProperty("fdbApiVersion", "600"));
         final File certChainFile = new File(System.getProperty("certChainFile", "cert.pem"));
@@ -53,7 +61,9 @@ public class Main {
         });
 
         server.start();
+        LOGGER.info("Server started.");
         server.awaitTermination();
+        LOGGER.info("Server terminated.");
     }
 
 }
