@@ -15,6 +15,7 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 
@@ -110,11 +111,13 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public void updateDocument(final Term term, final Document doc) throws IOException {
+        logger.info("updateDocument({}, {})", term, doc);
         this.writer.updateDocument(term, doc);
     }
 
     @Override
     public void deleteDocuments(final Term... terms) throws IOException {
+        logger.info("deleteDocuments({})", Arrays.toString(terms));
         this.writer.deleteDocuments(terms);
     }
 

@@ -15,6 +15,7 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -87,6 +88,7 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
 
     @Override
     public void deleteDocuments(final Term... terms) throws IOException {
+        logger.info("deleteDocuments({})", Arrays.toString(terms));
         writer.deleteDocuments(terms);
     }
 
@@ -121,6 +123,7 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
 
     @Override
     public void updateDocument(final Term term, final Document doc) throws IOException {
+        logger.info("updateDocument({}, {})", term, doc);
         writer.updateDocument(term, doc);
     }
 
