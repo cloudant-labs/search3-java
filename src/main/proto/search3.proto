@@ -15,7 +15,7 @@ service Search {
     rpc GroupSearch(GroupSearchRequest) returns (GroupSearchResponse);
 
     // Write operations
-    rpc Update(stream DocumentUpdate) returns (ServiceResponse);    
+    rpc Update(DocumentUpdate) returns (ServiceResponse);    
 }
 
 // Uniquely identifies a search index.

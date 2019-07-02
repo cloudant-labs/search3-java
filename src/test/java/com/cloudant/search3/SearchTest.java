@@ -85,11 +85,9 @@ public class SearchTest extends BaseFDBTest {
 
             // Index something.
             final CollectingStreamObserver<ServiceResponse> serviceResponseCollector = new CollectingStreamObserver<ServiceResponse>();
-            final StreamObserver<DocumentUpdate> stream = search.update(serviceResponseCollector);
             final DocumentUpdate docUpdate = DocumentUpdate.newBuilder().setIndex(index).setId("foobar")
                     .addFields(field("foo", "bar baz", true)).build();
-            stream.onNext(docUpdate);
-            stream.onCompleted();
+            search.update(docUpdate, serviceResponseCollector);
             assertNotNull(serviceResponseCollector.lastValue);
             assertNull(serviceResponseCollector.lastThrowable);
             assertTrue(serviceResponseCollector.completed);

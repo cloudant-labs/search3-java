@@ -205,44 +205,28 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public StreamObserver<DocumentUpdate> update(final StreamObserver<ServiceResponse> responseObserver) {
-        return new StreamObserver<DocumentUpdate>() {
+    public void update(final DocumentUpdate request, final StreamObserver<ServiceResponse> responseObserver) {
+        try {
+            final SearchHandler handler = getOrOpen(request.getIndex());
 
-            @Override
-            public void onNext(final DocumentUpdate request) {
-                try {
-                    final SearchHandler handler = getOrOpen(request.getIndex());
-
-                    final String id = request.getId();
-                    if (id == null || id.isEmpty()) {
-                        throw new IOException("doc id is missing.");
-                    }
-                    final Term idTerm = new Term("_id", id);
-
-                    if (request.getFieldsCount() == 0) {
-                        handler.deleteDocuments(idTerm);
-                    } else {
-                        final Document doc = toDoc(request);
-                        handler.updateDocument(idTerm, doc);
-                    }
-                } catch (final IOException e) {
-                    LOGGER.catching(e);
-                    responseObserver.onError(Status.fromThrowable(e).asException());
-                }
+            final String id = request.getId();
+            if (id == null || id.isEmpty()) {
+                throw new IOException("doc id is missing.");
             }
+            final Term idTerm = new Term("_id", id);
 
-            @Override
-            public void onError(final Throwable t) {
-                // No-op.
+            if (request.getFieldsCount() == 0) {
+                handler.deleteDocuments(idTerm);
+            } else {
+                final Document doc = toDoc(request);
+                handler.updateDocument(idTerm, doc);
             }
-
-            @Override
-            public void onCompleted() {
-                responseObserver.onNext(OK);
-                responseObserver.onCompleted();
-            }
-
-        };
+            responseObserver.onNext(OK);
+            responseObserver.onCompleted();
+        } catch (final IOException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(Status.fromThrowable(e).asException());
+        }
     }
 
     @Override
