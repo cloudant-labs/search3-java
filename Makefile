@@ -1,3 +1,6 @@
+all: ca.pem
+	@mvn clean test
+
 ca.pem:
 	@certstrap init --common-name somewhere.over.the.rainbow --passphrase ""
 	@certstrap request-cert -ip 127.0.0.1 --passphrase ""
