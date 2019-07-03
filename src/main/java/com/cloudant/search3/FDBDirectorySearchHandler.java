@@ -16,11 +16,8 @@ package com.cloudant.search3;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Map;
 
 import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriter;
@@ -40,6 +37,7 @@ import org.apache.lucene.util.BytesRef;
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
 import com.cloudant.fdblucene.FDBDirectory;
+import com.cloudant.search3.grpc.Search3.InfoResponse;
 
 /**
  * Provides all services for a specific index using an FDBDirectory; should be
@@ -54,6 +52,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             public SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer)
                     throws IOException {
                 final Directory dir = FDBDirectory.open(db, index, PAGE_SIZE, TXN_SIZE);
+                dir.deleteFile("write.lock"); // HACK!!!
                 final IndexWriterConfig indexWriterConfig = indexWriterConfig(analyzer);
                 final IndexWriter writer = new IndexWriter(dir, indexWriterConfig);
                 final SearcherManager manager = new SearcherManager(writer, null);
@@ -68,12 +67,9 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private static final int TXN_SIZE = 10 * PAGE_SIZE;
 
     private final String toString;
-    private final Logger logger;
     private final IndexWriter writer;
     private final SearcherManager manager;
-
-    private String pendingUpdateSeq;
-    private String updateSeq = "0";
+    private boolean dirty = false;
 
     private FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager) {
         this.toString = String.format("FDBDirectorySearchHandler(%s)", writer.getDirectory());
@@ -110,40 +106,33 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
+    public InfoResponse info() throws IOException {
+        return null;
+    }
+
+    @Override
     public void updateDocument(final Term term, final Document doc) throws IOException {
         logger.info("updateDocument({}, {})", term, doc);
         this.writer.updateDocument(term, doc);
+        this.dirty = true;
     }
 
     @Override
     public void deleteDocuments(final Term... terms) throws IOException {
         logger.info("deleteDocuments({})", Arrays.toString(terms));
         this.writer.deleteDocuments(terms);
-    }
-
-    @Override
-    public String getUpdateSeq() {
-        return updateSeq;
-    }
-
-    @Override
-    public void setPendingUpdateSeq(final String pendingUpdateSeq) {
-        this.pendingUpdateSeq = pendingUpdateSeq;
+        this.dirty = true;
     }
 
     @Override
     public void commit() throws IOException {
-        if (pendingUpdateSeq == null) {
+        if (!dirty) {
             return;
         }
-        final Map<String, String> commitData = Collections.singletonMap("update_seq", pendingUpdateSeq);
-        this.writer.setLiveCommitData(commitData.entrySet());
-
         try {
             this.writer.commit();
-            this.updateSeq = this.pendingUpdateSeq;
-            this.pendingUpdateSeq = null;
-            logger.info("committed at update sequence \"{}\".", updateSeq);
+            this.dirty = false;
+            logger.info("committed.");
         } catch (final IOException e) {
             logger.catching(e);
         }

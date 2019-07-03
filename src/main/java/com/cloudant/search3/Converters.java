@@ -127,23 +127,22 @@ public final class Converters {
             final boolean stored = field.getStored();
             final boolean facet = field.getFacet();
 
-            switch (value.getValueOneofCase()) {
-            case BOOL_VALUE:
-                builder.addBoolean(name, value.getBoolValue(), stored);
+            switch (value.getValueCase()) {
+            case BOOL:
+                builder.addBoolean(name, value.getBool(), stored);
                 break;
-            case DOUBLE_VALUE:
-                builder.addDouble(name, value.getDoubleValue(), stored);
+            case DOUBLE:
+                builder.addDouble(name, value.getDouble(), stored);
                 break;
-            case STRING_VALUE:
+            case STRING:
                 if (analyzed) {
-                    builder.addText(name, value.getStringValue(), stored, facet);
+                    builder.addText(name, value.getString(), stored, facet);
                 } else {
-                    builder.addString(name, value.getStringValue(), stored);
+                    builder.addString(name, value.getString(), stored);
                 }
                 break;
             default:
-                // Ignore field with no value.
-                break;
+                throw new IOException(name + " has no value.");
             }
         }
         return builder.build();

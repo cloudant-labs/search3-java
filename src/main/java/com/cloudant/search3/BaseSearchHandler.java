@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Set;
 
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.FieldDoc;
@@ -50,12 +51,15 @@ public abstract class BaseSearchHandler implements SearchHandler {
         return n == 0 ? DEFAULT_N : n;
     }
 
+    protected Logger logger;
+
     @Override
     public final SearchResponse search(
             final Query query,
             final int n,
             final Set<String> fieldsToLoad,
             final boolean staleOk) throws IOException {
+        logger.info("search {} {}", query, n);
         return withSearcher(staleOk, searcher -> {
             final TopDocs topDocs = searcher.search(query, defaultN(n));
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
@@ -64,7 +68,6 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 final Document doc = searcher.doc(topDocs.scoreDocs[i].doc, defaultFieldsToLoad(fieldsToLoad));
                 final Hit.Builder hitBuilder = Hit.newBuilder();
                 hitBuilder.setId(doc.get("_id"));
-                hitBuilder.addOrder(FieldValue.newBuilder().setDoubleValue(topDocs.scoreDocs[i].score));
                 addFieldsToHit(hitBuilder, doc);
                 responseBuilder.addHits(hitBuilder);
             }
@@ -79,6 +82,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
             final Sort sort,
             final Set<String> fieldsToLoad,
             final boolean staleOk) throws IOException {
+        logger.info("search {} {} {}", query, n, sort);
         return withSearcher(staleOk, searcher -> {
             final TopFieldDocs topFieldDocs = searcher.search(query, defaultN(n), sort);
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
@@ -88,15 +92,6 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 final Document doc = searcher.doc(fieldDoc.doc, defaultFieldsToLoad(fieldsToLoad));
                 final Hit.Builder hitBuilder = Hit.newBuilder();
                 hitBuilder.setId(doc.get("_id"));
-                for (int j = 0; j < fieldDoc.fields.length; j++) {
-                    final Object field = fieldDoc.fields[j];
-                    if (field instanceof String) {
-                        hitBuilder.addOrder(FieldValue.newBuilder().setStringValue((String) field));
-                    }
-                    if (field instanceof Number) {
-                        hitBuilder.addOrder(FieldValue.newBuilder().setDoubleValue(((Number) field).doubleValue()));
-                    }
-                }
                 addFieldsToHit(hitBuilder, doc);
                 responseBuilder.addHits(hitBuilder);
             }
@@ -110,9 +105,9 @@ public abstract class BaseSearchHandler implements SearchHandler {
             hitFieldBuilder.setName(field.name());
             final FieldValue.Builder fieldValueBuilder;
             if (field.stringValue() != null) {
-                fieldValueBuilder = FieldValue.newBuilder().setStringValue(field.stringValue());
+                fieldValueBuilder = FieldValue.newBuilder().setString(field.stringValue());
             } else if (field.numericValue() != null) {
-                fieldValueBuilder = FieldValue.newBuilder().setDoubleValue(field.numericValue().doubleValue());
+                fieldValueBuilder = FieldValue.newBuilder().setDouble(field.numericValue().doubleValue());
             } else {
                 continue;
             }

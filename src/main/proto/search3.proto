@@ -78,13 +78,11 @@ message Group {
 
 message GroupHit {
     string id = 1;
-    repeated FieldValue order = 2;
     repeated HitField fields = 3;
 }
 
 message Hit {
     string id = 1;
-    repeated FieldValue order = 2;
     repeated HitField fields = 3;
 }
 
@@ -107,10 +105,10 @@ message HitField {
 }
 
 message FieldValue {
-    oneof value_oneof {
-        string string_value = 1;
-        bool bool_value = 2;
-        double double_value = 3;
+    oneof value {
+        string string = 1;
+        bool bool = 2;
+        double double = 3;
     }
 }
 

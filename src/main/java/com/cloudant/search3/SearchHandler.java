@@ -24,13 +24,16 @@ import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.BytesRef;
 
+import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 
 public interface SearchHandler {
 
-    SearchResponse search(Query query, int n, Set<String> fieldsToLoad, boolean staleOk) throws IOException;
+    void close() throws IOException;
 
-    SearchResponse search(Query query, int n, Sort sort, Set<String> fieldsToLoad, boolean staleOk) throws IOException;
+    void commit() throws IOException;
+
+    void deleteDocuments(Term... terms) throws IOException;
 
     TopGroups<BytesRef> groupingSearch(
             Query query,
@@ -41,15 +44,11 @@ public interface SearchHandler {
             int groupDocsLimit,
             boolean staleOk) throws IOException;
 
+    InfoResponse info() throws IOException;
+
+    SearchResponse search(Query query, int n, Set<String> fieldsToLoad, boolean staleOk) throws IOException;
+
+    SearchResponse search(Query query, int n, Sort sort, Set<String> fieldsToLoad, boolean staleOk) throws IOException;
+
     void updateDocument(Term term, Document doc) throws IOException;
-
-    void deleteDocuments(Term... terms) throws IOException;
-
-    String getUpdateSeq();
-
-    void setPendingUpdateSeq(String pendingUpdateSeq);
-
-    void commit() throws IOException;
-
-    void close() throws IOException;
 }

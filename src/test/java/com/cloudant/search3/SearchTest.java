@@ -111,11 +111,11 @@ public class SearchTest extends BaseFDBTest {
     }
 
     private FieldValue.Builder fieldValue(final double value) {
-        return FieldValue.newBuilder().setDoubleValue(value);
+        return FieldValue.newBuilder().setDouble(value);
     }
 
     private FieldValue.Builder fieldValue(final String value) {
-        return FieldValue.newBuilder().setStringValue(value);
+        return FieldValue.newBuilder().setString(value);
     }
 
 }

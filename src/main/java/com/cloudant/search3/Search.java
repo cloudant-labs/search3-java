@@ -117,7 +117,14 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     @Override
     public void info(final Index request, final StreamObserver<InfoResponse> responseObserver) {
-        throw new UnsupportedOperationException("info not supported.");
+        try {
+            final SearchHandler handler = getOrOpen(request);
+            responseObserver.onNext(handler.info());
+            responseObserver.onCompleted();
+        } catch (final IOException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(Status.fromThrowable(e).asException());
+        }
     }
 
     @Override

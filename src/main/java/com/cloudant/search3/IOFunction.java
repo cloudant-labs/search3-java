@@ -16,6 +16,7 @@ package com.cloudant.search3;
 
 import java.io.IOException;
 
-@FunctionalInterface interface IOFunction<T, R> {
+@FunctionalInterface
+interface IOFunction<T, R> {
     R apply(T t) throws IOException;
 }
