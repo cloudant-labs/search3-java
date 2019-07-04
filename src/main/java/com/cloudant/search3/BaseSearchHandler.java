@@ -65,7 +65,12 @@ public abstract class BaseSearchHandler implements SearchHandler {
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
             responseBuilder.setMatches(topDocs.totalHits.value);
             for (int i = 0; i < topDocs.scoreDocs.length; i++) {
-                final Document doc = searcher.doc(topDocs.scoreDocs[i].doc, defaultFieldsToLoad(fieldsToLoad));
+                final Document doc;
+                if (fieldsToLoad.isEmpty()) {
+                    doc = searcher.doc(topDocs.scoreDocs[i].doc);
+                } else {
+                    doc = searcher.doc(topDocs.scoreDocs[i].doc, defaultFieldsToLoad(fieldsToLoad));
+                }
                 final Hit.Builder hitBuilder = Hit.newBuilder();
                 hitBuilder.setId(doc.get("_id"));
                 addFieldsToHit(hitBuilder, doc);
