@@ -132,6 +132,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             logger.info("committed.");
         } catch (final IOException e) {
             logger.catching(e);
+            throw e;
         }
     }
 
