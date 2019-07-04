@@ -199,7 +199,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                     }
                     final Term idTerm = new Term("_id", id);
 
-                    if (request.getFieldsCount() == 0) {
+                    if (request.getDeleted()) {
                         handler.deleteDocuments(idTerm);
                     } else {
                         final Document doc = toDoc(request);
