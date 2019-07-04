@@ -41,6 +41,7 @@ import org.apache.lucene.util.BytesRef;
 
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
+import com.cloudant.search3.grpc.Search3.DocumentDelete;
 import com.cloudant.search3.grpc.Search3.DocumentUpdate;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
@@ -81,7 +82,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     }
 
-    private static final SearchStatus OK = SearchStatus.newBuilder().setCode(StatusCode.OK).build();
+    // This really can't be how we do this?
+    private static final SearchStatus SUCCESS = SearchStatus.newBuilder().setCode(StatusCode.SUCCESS).build();
 
     private final Database db;
     private final SearchHandlerFactory searchHandlerFactory;
@@ -105,7 +107,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 txn.clear(subspace.range());
                 return null;
             });
-            responseObserver.onNext(OK);
+            responseObserver.onNext(SUCCESS);
             responseObserver.onCompleted();
             LOGGER.info("Deleted index {}.", subspace);
         } catch (final IOException e) {
@@ -185,47 +187,40 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public StreamObserver<DocumentUpdate> update(final StreamObserver<SearchStatus> responseObserver) {
-        return new StreamObserver<DocumentUpdate>() {
-
-            @Override
-            public void onNext(final DocumentUpdate request) {
-                try {
-                    final SearchHandler handler = getOrOpen(request.getIndex());
-
-                    final String id = request.getId();
-                    if (id == null || id.isEmpty()) {
-                        throw new IOException("doc id is missing.");
-                    }
-                    final Term idTerm = new Term("_id", id);
-
-                    if (request.getDeleted()) {
-                        handler.deleteDocuments(idTerm);
-                    } else {
-                        final Document doc = toDoc(request);
-                        handler.updateDocument(idTerm, doc);
-                    }
-
-                } catch (final IOException e) {
-                    LOGGER.catching(e);
-                    responseObserver.onError(Status.fromThrowable(e).asException());
-                }
+    public void updateDocument(final DocumentUpdate request, final StreamObserver<SearchStatus> responseObserver) {
+        try {
+            final SearchHandler handler = getOrOpen(request.getIndex());
+            final String id = request.getId();
+            if (id == null || id.isEmpty()) {
+                throw new IOException("doc id is missing.");
             }
+            final Term idTerm = new Term("_id", id);
+            final Document doc = toDoc(request);
+            handler.updateDocument(idTerm, doc);
+            responseObserver.onNext(SUCCESS);
+            responseObserver.onCompleted();
+        } catch (final IOException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(Status.fromThrowable(e).asException());
+        }
+    }
 
-            @Override
-            public void onError(Throwable t) {
-                LOGGER.catching(t);
-                responseObserver.onError(Status.fromThrowable(t).asException());
+    @Override
+    public void deleteDocument(final DocumentDelete request, final StreamObserver<SearchStatus> responseObserver) {
+        try {
+            final SearchHandler handler = getOrOpen(request.getIndex());
+            final String id = request.getId();
+            if (id == null || id.isEmpty()) {
+                throw new IOException("doc id is missing.");
             }
-
-            @Override
-            public void onCompleted() {
-                responseObserver.onNext(OK);
-                responseObserver.onCompleted();
-            }
-
-        };
-
+            final Term idTerm = new Term("_id", id);
+            handler.deleteDocuments(idTerm);
+            responseObserver.onNext(SUCCESS);
+            responseObserver.onCompleted();
+        } catch (final IOException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(Status.fromThrowable(e).asException());
+        }
     }
 
     @Override

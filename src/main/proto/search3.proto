@@ -1,4 +1,5 @@
 // -*-java-*-
+
 syntax = "proto3";
 option java_package = "com.cloudant.search3.grpc";
 
@@ -12,7 +13,8 @@ service Search {
     rpc GroupSearch(GroupSearchRequest) returns (GroupSearchResponse);
 
     // Write operations
-    rpc Update(stream DocumentUpdate) returns (SearchStatus);
+    rpc UpdateDocument(DocumentUpdate) returns (SearchStatus);
+    rpc DeleteDocument(DocumentDelete) returns (SearchStatus);
 }
 
 // Uniquely identifies a search index.
@@ -31,7 +33,6 @@ message InfoResponse {
 message Sort {
     repeated string fields = 1;
 }
-
 
 message SearchRequest {
     Index index = 1;
@@ -120,13 +121,18 @@ message SearchTerm {
 message DocumentUpdate {
     Index index = 1;
     string id = 2;
-    bool deleted = 3;
     repeated DocumentField fields = 4;
+}
+
+message DocumentDelete {
+    Index index = 1;
+    string id = 2;
 }
 
 message SearchStatus {
     enum StatusCode {
-        OK = 0;
+        SUCCESS = 0;
+        FAILURE = 1;
     }
     StatusCode code = 1;
 }
