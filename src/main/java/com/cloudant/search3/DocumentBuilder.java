@@ -20,11 +20,13 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DoubleDocValuesField;
 import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.facet.FacetsConfig;
 import org.apache.lucene.facet.sortedset.SortedSetDocValuesFacetField;
+import org.apache.lucene.util.BytesRef;
 
 public final class DocumentBuilder {
 
@@ -35,6 +37,7 @@ public final class DocumentBuilder {
 
     public DocumentBuilder addString(final String name, final String value, final boolean store) {
         doc().add(new StringField(name, value, toStore(store)));
+        doc().add(new SortedDocValuesField(name, new BytesRef(value)));
         return this;
     }
 
