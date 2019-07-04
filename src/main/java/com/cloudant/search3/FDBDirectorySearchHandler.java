@@ -27,8 +27,6 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.SortField;
-import org.apache.lucene.search.SortField.Type;
 import org.apache.lucene.search.grouping.GroupingSearch;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.store.Directory;
@@ -140,7 +138,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     private static IndexWriterConfig indexWriterConfig(final Analyzer analyzer) {
         final IndexWriterConfig result = new IndexWriterConfig(analyzer);
-        result.setIndexSort(new Sort(new SortField("_id", Type.STRING)));
         result.setUseCompoundFile(false);
         return result;
     }
