@@ -98,7 +98,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     public void delete(final Index request, final StreamObserver<SearchStatus> responseObserver) {
         final Subspace subspace;
         try {
-            final SearchHandler handler = getOrOpen(request);
+            final SearchHandler handler = remove(request);
             subspace = toSubspace(request);
             handler.close();
             db.run(txn -> {
@@ -258,6 +258,11 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             throw new IndexNotFoundException(index + " is not an index.");
         }
         return result;
+    }
+
+    private SearchHandler remove(final Index index) throws IndexNotFoundException {
+        final Subspace indexSubspace = toSubspace(index);
+        return handlers.remove(indexSubspace);
     }
 
     private Subspace toSubspace(final Index index) throws IndexNotFoundException {
