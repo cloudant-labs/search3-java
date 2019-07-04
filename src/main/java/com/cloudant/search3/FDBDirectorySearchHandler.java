@@ -50,7 +50,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             public SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer)
                     throws IOException {
                 final Directory dir = FDBDirectory.open(db, index, PAGE_SIZE, TXN_SIZE);
-                dir.deleteFile("write.lock"); // HACK!!!
                 final IndexWriterConfig indexWriterConfig = indexWriterConfig(analyzer);
                 final IndexWriter writer = new IndexWriter(dir, indexWriterConfig);
                 final SearcherManager manager = new SearcherManager(writer, null);
