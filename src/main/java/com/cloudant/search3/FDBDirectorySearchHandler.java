@@ -14,6 +14,7 @@
 
 package com.cloudant.search3;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
@@ -53,10 +54,23 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             public SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer)
                     throws IOException {
                 final Directory dir = FDBDirectory.open(db, index, PAGE_SIZE, TXN_SIZE);
+                forciblyUnlock(dir);
                 final IndexWriterConfig indexWriterConfig = indexWriterConfig(analyzer);
                 final IndexWriter writer = new IndexWriter(dir, indexWriterConfig);
                 final SearcherManager manager = new SearcherManager(writer, null);
                 return new FDBDirectorySearchHandler(writer, manager);
+            }
+
+            /**
+             * The current holder of the lock will know they lost the lock on their next
+             * attempt at a destructive operation and will crash cleanly.
+             */
+            private void forciblyUnlock(final Directory dir) throws IOException {
+                try {
+                    dir.deleteFile(IndexWriter.WRITE_LOCK_NAME);
+                } catch (final FileNotFoundException e) {
+                    // Lock didn't exist.
+                }
             }
 
         };
