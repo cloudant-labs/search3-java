@@ -33,7 +33,7 @@ public interface SearchHandler {
 
     void commit() throws IOException;
 
-    void deleteDocuments(Term... terms) throws IOException;
+    void deleteDocument(Term term) throws IOException;
 
     TopGroups<BytesRef> groupingSearch(
             Query query,
@@ -49,6 +49,10 @@ public interface SearchHandler {
     SearchResponse search(Query query, int n, Set<String> fieldsToLoad, boolean staleOk) throws IOException;
 
     SearchResponse search(Query query, int n, Sort sort, Set<String> fieldsToLoad, boolean staleOk) throws IOException;
+
+    String getUpdateSeq();
+
+    void setPendingUpdateSeq(String pendingUpdateSeq);
 
     void updateDocument(Term term, Document doc) throws IOException;
 }

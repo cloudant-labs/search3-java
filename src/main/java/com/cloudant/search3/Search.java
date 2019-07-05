@@ -51,6 +51,8 @@ import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SearchStatus;
 import com.cloudant.search3.grpc.Search3.SearchStatus.StatusCode;
+import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
+import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.cloudant.search3.grpc.SearchGrpc;
 import com.google.protobuf.ByteString;
 
@@ -94,6 +96,32 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         this.db = db;
         this.searchHandlerFactory = searchHandlerFactory;
         this.timer = new Timer();
+    }
+
+    @Override
+    public void getUpdateSequence(Index request, StreamObserver<UpdateSeq> responseObserver) {
+        try {
+            final SearchHandler handler = getOrOpen(request);
+            final UpdateSeq updateSeq = UpdateSeq.newBuilder().setSeq(handler.getUpdateSeq()).build();
+            responseObserver.onNext(updateSeq);
+            responseObserver.onCompleted();
+        } catch (final IOException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(Status.fromThrowable(e).asException());
+        }
+    }
+
+    @Override
+    public void setUpdateSequence(SetUpdateSeq request, StreamObserver<SearchStatus> responseObserver) {
+        try {
+            final SearchHandler handler = getOrOpen(request.getIndex());
+            handler.setPendingUpdateSeq(request.getSeq());
+        } catch (final IOException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(Status.fromThrowable(e).asException());
+        }
+        responseObserver.onNext(SUCCESS);
+        responseObserver.onCompleted();
     }
 
     @Override
@@ -214,7 +242,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 throw new IOException("doc id is missing.");
             }
             final Term idTerm = new Term("_id", id);
-            handler.deleteDocuments(idTerm);
+            handler.deleteDocument(idTerm);
             responseObserver.onNext(SUCCESS);
             responseObserver.onCompleted();
         } catch (final IOException e) {

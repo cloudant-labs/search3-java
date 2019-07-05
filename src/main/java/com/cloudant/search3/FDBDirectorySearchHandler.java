@@ -15,7 +15,10 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Map.Entry;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.lucene.analysis.Analyzer;
@@ -66,6 +69,8 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private final String toString;
     private final IndexWriter writer;
     private final SearcherManager manager;
+    private String pendingUpdateSeq;
+    private String updateSeq;
     private boolean dirty = false;
 
     private FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager) {
@@ -115,9 +120,26 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void deleteDocuments(final Term... terms) throws IOException {
-        logger.info("deleteDocuments({})", Arrays.toString(terms));
-        this.writer.deleteDocuments(terms);
+    public void deleteDocument(final Term term) throws IOException {
+        logger.info("deleteDocument({})", term);
+        this.writer.deleteDocuments(term);
+        this.dirty = true;
+    }
+
+    @Override
+    public String getUpdateSeq() {
+        if (updateSeq == null) {
+            final Map<String, String> commitData = getLiveCommitData();
+            if (commitData != null) {
+                updateSeq = commitData.get("update_seq");
+            }
+        }
+        return updateSeq;
+    }
+
+    @Override
+    public void setPendingUpdateSeq(final String pendingUpdateSeq) {
+        this.pendingUpdateSeq = pendingUpdateSeq;
         this.dirty = true;
     }
 
@@ -126,14 +148,38 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         if (!dirty) {
             return;
         }
+
+        // Record a new update seq if we have one.
+        if (pendingUpdateSeq != null) {
+            this.writer.setLiveCommitData(createLiveCommitData("update_seq", pendingUpdateSeq));
+        }
+
         try {
             this.writer.commit();
+            this.updateSeq = this.pendingUpdateSeq;
+            this.pendingUpdateSeq = null;
             this.dirty = false;
-            logger.info("committed.");
+            logger.info("committed at update sequence \"{}\".", updateSeq);
         } catch (final IOException e) {
             logger.catching(e);
             throw e;
         }
+    }
+
+    private Map<String, String> getLiveCommitData() {
+        final Iterable<Entry<String, String>> it = writer.getLiveCommitData();
+        if (it == null) {
+            return null;
+        }
+        final Map<String, String> result = new HashMap<String, String>();
+        for (final Entry<String, String> entry : it) {
+            result.put(entry.getKey(), entry.getValue());
+        }
+        return result;
+    }
+
+    private Iterable<Entry<String, String>> createLiveCommitData(final String key, final String value) {
+        return Collections.singletonMap(key, value).entrySet();
     }
 
     private static IndexWriterConfig indexWriterConfig(final Analyzer analyzer) {

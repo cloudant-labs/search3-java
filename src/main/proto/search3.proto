@@ -6,7 +6,9 @@ option java_package = "com.cloudant.search3.grpc";
 service Search {
     // Index operations
     rpc Delete(Index) returns (SearchStatus);
+    rpc GetUpdateSequence(Index) returns (UpdateSeq);
     rpc Info(Index) returns (InfoResponse);
+    rpc SetUpdateSequence(SetUpdateSeq) returns (SearchStatus);
 
     // Read operations
     rpc Search(SearchRequest) returns (SearchResponse);
@@ -15,6 +17,15 @@ service Search {
     // Write operations
     rpc UpdateDocument(DocumentUpdate) returns (SearchStatus);
     rpc DeleteDocument(DocumentDelete) returns (SearchStatus);
+}
+
+message UpdateSeq {
+    string seq = 1;
+}
+
+message SetUpdateSeq {
+    Index index = 1;
+    string seq = 2;
 }
 
 // Uniquely identifies a search index.

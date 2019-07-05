@@ -15,7 +15,6 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
-import java.util.Arrays;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.lucene.analysis.Analyzer;
@@ -29,6 +28,7 @@ import org.apache.lucene.util.BytesRef;
 
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
+import com.apple.foundationdb.tuple.Tuple;
 import com.cloudant.fdblucene.FDBIndexReader;
 import com.cloudant.fdblucene.FDBIndexWriter;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
@@ -49,14 +49,17 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
 
     private final String toString;
     private final Database db;
+    private final byte[] updateSeqKey;
     private final FDBIndexWriter writer;
     private final FDBIndexReader reader;
     private final IndexSearcher searcher;
+    private String pendingUpdateSeq;
 
     private FDBIndexWriterSearchHandler(final Database db, final Subspace index, final Analyzer analyzer) {
         this.toString = String.format("FDBIndexWriterSearchHandler(%s)", index);
         this.logger = LogManager.getLogger(toString);
         this.db = db;
+        this.updateSeqKey = index.pack("_update_seq");
         writer = new FDBIndexWriter(db, index, analyzer);
         reader = new FDBIndexReader(index);
         searcher = new IndexSearcher(reader);
@@ -69,13 +72,34 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
 
     @Override
     public void commit() throws IOException {
-        // no-op.
+        if (pendingUpdateSeq == null) {
+            return;
+        }
+        final byte[] value = Tuple.from(pendingUpdateSeq).pack();
+        db.run(txn -> {
+            txn.set(updateSeqKey, value);
+            return null;
+        });
+        logger.info("committed at update sequence \"{}\".", pendingUpdateSeq);
+        this.pendingUpdateSeq = null;
     }
 
     @Override
-    public void deleteDocuments(final Term... terms) throws IOException {
-        logger.info("deleteDocuments({})", Arrays.toString(terms));
-        writer.deleteDocuments(terms);
+    public void deleteDocument(final Term term) throws IOException {
+        logger.info("deleteDocument({})", term);
+        writer.deleteDocuments(term);
+    }
+
+    @Override
+    public String getUpdateSeq() {
+        return db.read(txn -> {
+            return txn.get(updateSeqKey).thenApply(v -> {
+                if (v == null) {
+                    return null;
+                }
+                return Tuple.fromBytes(v).getString(0);
+            });
+        }).join();
     }
 
     @Override
@@ -93,6 +117,11 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     @Override
     public InfoResponse info() throws IOException {
         return null;
+    }
+
+    @Override
+    public void setPendingUpdateSeq(final String pendingUpdateSeq) {
+        this.pendingUpdateSeq = pendingUpdateSeq;
     }
 
     @Override
