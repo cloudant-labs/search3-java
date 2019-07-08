@@ -31,7 +31,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.index.IndexNotFoundException;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.Query;
@@ -106,9 +105,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         try {
             final SearchHandler handler = getOrOpen(request);
             final String result = handler.getUpdateSeq();
-            if (result == null) {
-                responseObserver.onError(Status.NOT_FOUND.asException());
-            } else {
+            if (result != null) {
                 final UpdateSeq updateSeq = UpdateSeq.newBuilder().setSeq(result).build();
                 responseObserver.onNext(updateSeq);
                 responseObserver.onCompleted();
@@ -261,7 +258,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         handlers.clear();
     }
 
-    private SearchHandler getOrOpen(final Index index) throws IndexNotFoundException {
+    private SearchHandler getOrOpen(final Index index) throws IOException {
         final Subspace indexSubspace = toSubspace(index);
         final SearchHandler result = handlers.computeIfAbsent(indexSubspace, key -> {
             try {
@@ -275,32 +272,32 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             }
         });
         if (result == null) {
-            throw new IndexNotFoundException(index + " is not an index.");
+            throw new IOException("I/O exception when opening " + index);
         }
         return result;
     }
 
-    private SearchHandler remove(final Index index) throws IndexNotFoundException {
+    private SearchHandler remove(final Index index) {
         final Subspace indexSubspace = toSubspace(index);
         return handlers.remove(indexSubspace);
     }
 
-    private Subspace toSubspace(final Index index) throws IndexNotFoundException {
+    private Subspace toSubspace(final Index index) {
         final ByteString prefix = index.getPrefix();
         if (prefix.isEmpty()) {
-            throw new IndexNotFoundException(prefix + " index not found");
+            throw new IllegalArgumentException("Index prefix not specified.");
         }
         return new Subspace(prefix.toByteArray());
     }
 
     private StatusException fromThrowable(final Throwable t) {
-        if (t instanceof IndexNotFoundException) {
-            return Status.NOT_FOUND.withDescription(t.getMessage()).asException();
+        if (t instanceof ParseException) {
+            return Status.INVALID_ARGUMENT.withDescription(t.getMessage()).asException();
         }
         if (t instanceof IOException) {
             return Status.ABORTED.withDescription(t.getMessage()).asException();
         }
-        return Status.fromThrowable(t).asException();
+        return Status.fromThrowable(t).withDescription(t.getMessage()).asException();
     }
 
 }
