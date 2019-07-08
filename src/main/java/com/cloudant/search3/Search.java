@@ -56,6 +56,7 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.Empty;
 
 import io.grpc.Status;
+import io.grpc.StatusException;
 import io.grpc.stub.StreamObserver;
 
 public final class Search extends SearchGrpc.SearchImplBase implements Closeable {
@@ -104,12 +105,16 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     public void getUpdateSequence(Index request, StreamObserver<UpdateSeq> responseObserver) {
         try {
             final SearchHandler handler = getOrOpen(request);
-            final UpdateSeq updateSeq = UpdateSeq.newBuilder().setSeq(handler.getUpdateSeq()).build();
-            responseObserver.onNext(updateSeq);
-            responseObserver.onCompleted();
+            final String result = handler.getUpdateSeq();
+            if (result == null) {
+                responseObserver.onError(Status.NOT_FOUND.asException());
+            } else {
+                final UpdateSeq updateSeq = UpdateSeq.newBuilder().setSeq(result).build();
+                responseObserver.onNext(updateSeq);
+                responseObserver.onCompleted();
+            }
         } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -118,12 +123,11 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         try {
             final SearchHandler handler = getOrOpen(request.getIndex());
             handler.setPendingUpdateSeq(request.getSeq());
+            responseObserver.onNext(EMPTY);
+            responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         }
-        responseObserver.onNext(EMPTY);
-        responseObserver.onCompleted();
     }
 
     @Override
@@ -141,9 +145,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onCompleted();
             LOGGER.info("Deleted index {}.", subspace);
         } catch (final IOException e) {
-            LOGGER.catching(e);
-            LOGGER.warn("Failed to delete index {}.", request);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -154,8 +156,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(handler.info());
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -179,11 +180,9 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         } catch (final ParseException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -208,11 +207,9 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         } catch (final ParseException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -230,8 +227,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -248,8 +244,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(Status.fromThrowable(e).asException());
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -293,9 +288,19 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     private Subspace toSubspace(final Index index) throws IndexNotFoundException {
         final ByteString prefix = index.getPrefix();
         if (prefix.isEmpty()) {
-            throw new IndexNotFoundException("Index not specified by prefix.");
+            throw new IndexNotFoundException(prefix + " index not found");
         }
         return new Subspace(prefix.toByteArray());
+    }
+
+    private StatusException fromThrowable(final Throwable t) {
+        if (t instanceof IndexNotFoundException) {
+            return Status.NOT_FOUND.withDescription(t.getMessage()).asException();
+        }
+        if (t instanceof IOException) {
+            return Status.ABORTED.withDescription(t.getMessage()).asException();
+        }
+        return Status.fromThrowable(t).asException();
     }
 
 }
