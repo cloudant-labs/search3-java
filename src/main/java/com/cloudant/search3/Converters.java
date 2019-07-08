@@ -72,6 +72,10 @@ public final class Converters {
     }
 
     public static Sort toSort(final Search3.Sort sort) throws ParseException {
+        if (sort.getFieldsCount() == 0) {
+            return Sort.RELEVANCE;
+        }
+
         final SortField[] sortFields = new SortField[sort.getFieldsCount()];
         for (int i = 0; i < sort.getFieldsCount(); i++) {
             switch (sort.getFields(i)) {
