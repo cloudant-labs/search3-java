@@ -33,8 +33,8 @@ import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
-import com.cloudant.search3.grpc.Search3.SearchStatus;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.Empty;
 
 import io.grpc.stub.StreamObserver;
 
@@ -84,7 +84,7 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            final CollectingStreamObserver<SearchStatus> serviceResponseCollector = new CollectingStreamObserver<SearchStatus>();
+            final CollectingStreamObserver<Empty> serviceResponseCollector = new CollectingStreamObserver<Empty>();
             final DocumentUpdate docUpdate = DocumentUpdate.newBuilder().setIndex(index).setId("foobar")
                     .addFields(field("foo", "bar baz", true)).build();
             search.updateDocument(docUpdate, serviceResponseCollector);
