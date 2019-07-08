@@ -59,7 +59,6 @@ public abstract class BaseSearchHandler implements SearchHandler {
             final int n,
             final Set<String> fieldsToLoad,
             final boolean staleOk) throws IOException {
-        logger.info("search {} {}", query, n);
         return withSearcher(staleOk, searcher -> {
             final TopDocs topDocs = searcher.search(query, defaultN(n));
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
@@ -87,7 +86,6 @@ public abstract class BaseSearchHandler implements SearchHandler {
             final Sort sort,
             final Set<String> fieldsToLoad,
             final boolean staleOk) throws IOException {
-        logger.info("search {} {} {}", query, n, sort);
         return withSearcher(staleOk, searcher -> {
             final TopFieldDocs topFieldDocs = searcher.search(query, defaultN(n), sort);
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
