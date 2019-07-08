@@ -104,7 +104,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
         });
     }
 
-    private void addFieldsToHit(final Hit.Builder hitBuilder, final Document doc) {
+    protected final void addFieldsToHit(final Hit.Builder hitBuilder, final Document doc) {
         for (final IndexableField field : doc) {
             final HitField.Builder hitFieldBuilder = HitField.newBuilder();
             hitFieldBuilder.setName(field.name());

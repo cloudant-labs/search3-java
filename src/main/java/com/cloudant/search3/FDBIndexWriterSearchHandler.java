@@ -23,14 +23,13 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.grouping.TopGroups;
-import org.apache.lucene.util.BytesRef;
 
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
 import com.apple.foundationdb.tuple.Tuple;
 import com.cloudant.fdblucene.FDBIndexReader;
 import com.cloudant.fdblucene.FDBIndexWriter;
+import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 
 public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
@@ -103,7 +102,7 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public TopGroups<BytesRef> groupingSearch(
+    public GroupSearchResponse groupingSearch(
             final Query query,
             final String groupBy,
             final Sort groupSort,

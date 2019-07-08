@@ -35,8 +35,6 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.grouping.TopGroups;
-import org.apache.lucene.util.BytesRef;
 
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
@@ -197,10 +195,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final int groupLimit = request.getGroupLimit();
 
             final SearchHandler handler = getOrOpen(request.getIndex());
-            final TopGroups<BytesRef> result = handler
+            final GroupSearchResponse response = handler
                     .groupingSearch(query, groupBy, groupSort, groupOffset, groupLimit, limit, staleOk);
-
-            final GroupSearchResponse response = GroupSearchResponse.newBuilder().build();
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {

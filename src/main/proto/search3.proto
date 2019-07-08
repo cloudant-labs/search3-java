@@ -86,16 +86,12 @@ message GroupSearchResponse {
 message Group {
     string by = 1;
     uint64 matches = 2;
-    repeated GroupHit hits = 3;
-}
-
-message GroupHit {
-    string id = 1;
-    repeated HitField fields = 3;
+    repeated Hit hits = 3;
 }
 
 message Hit {
     string id = 1;
+    repeated FieldValue order = 2;
     repeated HitField fields = 3;
 }
 

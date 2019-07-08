@@ -21,9 +21,8 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.grouping.TopGroups;
-import org.apache.lucene.util.BytesRef;
 
+import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 
@@ -35,7 +34,7 @@ public interface SearchHandler {
 
     void deleteDocument(Term term) throws IOException;
 
-    TopGroups<BytesRef> groupingSearch(
+    GroupSearchResponse groupingSearch(
             Query query,
             String groupBy,
             Sort groupSort,

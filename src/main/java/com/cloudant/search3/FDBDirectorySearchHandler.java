@@ -29,8 +29,10 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.grouping.GroupDocs;
 import org.apache.lucene.search.grouping.GroupingSearch;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.store.Directory;
@@ -39,6 +41,9 @@ import org.apache.lucene.util.BytesRef;
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
 import com.cloudant.fdblucene.FDBDirectory;
+import com.cloudant.search3.grpc.Search3.Group;
+import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
+import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 
 /**
@@ -101,7 +106,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public TopGroups<BytesRef> groupingSearch(
+    public GroupSearchResponse groupingSearch(
             final Query query,
             final String groupBy,
             final Sort groupSort,
@@ -114,11 +119,32 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         groupingSearch.setGroupSort(groupSort);
         groupingSearch.setCachingInMB(GROUP_CACHING_MB, true);
         groupingSearch.setAllGroups(false);
-        groupingSearch.setGroupDocsLimit(groupDocsLimit);
+        groupingSearch.setGroupDocsLimit(defaultN(groupDocsLimit));
 
         return withSearcher(staleOk, searcher -> {
-            return groupingSearch.search(searcher, query, groupOffset, groupLimit);
+            final TopGroups<BytesRef> result = groupingSearch
+                    .search(searcher, query, groupOffset, defaultN(groupLimit));
+            final GroupSearchResponse.Builder responseBuilder = GroupSearchResponse.newBuilder();
+            responseBuilder.setMatches(result.totalHitCount);
+            responseBuilder.setGroupMatches(result.totalGroupedHitCount);
+
+            for (final GroupDocs<BytesRef> group : result.groups) {
+                final Group.Builder groupBuilder = Group.newBuilder();
+                groupBuilder.setMatches(group.totalHits.value);
+                groupBuilder.setBy(group.groupValue.utf8ToString());
+                for (final ScoreDoc scoreDoc : group.scoreDocs) {
+                    final Document doc = searcher.doc(scoreDoc.doc);
+                    final Hit.Builder hitBuilder = Hit.newBuilder();
+                    hitBuilder.setId(doc.get("_id"));
+                    addFieldsToHit(hitBuilder, doc);
+                    groupBuilder.addHits(hitBuilder);
+                }
+                responseBuilder.addGroups(groupBuilder);
+            }
+
+            return responseBuilder.build();
         });
+
     }
 
     @Override

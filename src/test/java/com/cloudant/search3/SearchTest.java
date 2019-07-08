@@ -31,6 +31,10 @@ import org.junit.runners.Parameterized.Parameters;
 import com.cloudant.search3.grpc.Search3.DocumentField;
 import com.cloudant.search3.grpc.Search3.DocumentUpdate;
 import com.cloudant.search3.grpc.Search3.FieldValue;
+import com.cloudant.search3.grpc.Search3.Group;
+import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
+import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
+import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
@@ -39,8 +43,6 @@ import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Empty;
 
-import io.grpc.Status;
-import io.grpc.StatusException;
 import io.grpc.stub.StreamObserver;
 
 @RunWith(Parameterized.class)
@@ -110,6 +112,49 @@ public class SearchTest extends BaseFDBTest {
     }
 
     @Test
+    public void indexAndGroupSearch() throws Exception {
+        try (final Search search = new Search(DB, factory)) {
+
+            final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
+
+            {
+                // Index something.
+                final CollectingStreamObserver<Empty> collector = new CollectingStreamObserver<Empty>();
+                final DocumentUpdate docUpdate = DocumentUpdate.newBuilder().setIndex(index).setId("foobar")
+                        .addFields(field("foo", "bar baz", true)).addFields(field("category", "foobar", false)).build();
+                search.updateDocument(docUpdate, collector);
+                assertNotNull(collector.lastValue);
+                assertNull(collector.lastThrowable);
+                assertTrue(collector.completed);
+            }
+
+            {
+                // Find it with a search?
+                final GroupSearchRequest groupSearchRequest = GroupSearchRequest.newBuilder().setIndex(index)
+                        .setGroupBy("category").setQuery("foo:bar").build();
+
+                final CollectingStreamObserver<GroupSearchResponse> collector = new CollectingStreamObserver<GroupSearchResponse>();
+                search.groupSearch(groupSearchRequest, collector);
+
+                final GroupSearchResponse searchResponse = collector.lastValue;
+                assertEquals(1, searchResponse.getMatches());
+                assertEquals(1, searchResponse.getGroupMatches());
+                assertEquals(1, searchResponse.getGroupsCount());
+
+                final Group group = searchResponse.getGroups(0);
+                assertEquals("foobar", group.getBy());
+                assertEquals(1, group.getMatches());
+                assertEquals(1, group.getHitsCount());
+
+                final Hit hit = group.getHits(0);
+                assertEquals("foobar", hit.getId());
+
+                System.out.println(searchResponse);
+            }
+        }
+    }
+
+    @Test
     public void getSetUpdateSeq() throws Exception {
         try (final Search search = new Search(DB, factory)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
@@ -118,7 +163,7 @@ public class SearchTest extends BaseFDBTest {
                 final CollectingStreamObserver<UpdateSeq> collector = new CollectingStreamObserver<UpdateSeq>();
                 search.getUpdateSequence(index, collector);
                 assertNull(collector.lastValue);
-                assertEquals(Status.NOT_FOUND, ((StatusException) collector.lastThrowable).getStatus());
+                assertNull(collector.lastThrowable);
             }
 
             {
@@ -128,7 +173,7 @@ public class SearchTest extends BaseFDBTest {
             }
 
             // Wait for the commit :/.
-            Thread.sleep(5001);
+            Thread.sleep(5500);
 
             {
                 final CollectingStreamObserver<UpdateSeq> collector = new CollectingStreamObserver<UpdateSeq>();
