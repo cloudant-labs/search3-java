@@ -115,9 +115,12 @@ message HitField {
 
 message FieldValue {
     oneof value {
-        string string = 1;
-        bool bool = 2;
-        double double = 3;
+        bool bool = 1;
+        double double = 2;
+        float float = 3;
+        string string = 4;
+        uint32 int = 5;
+        uint64 long = 6;
     }
 }
 

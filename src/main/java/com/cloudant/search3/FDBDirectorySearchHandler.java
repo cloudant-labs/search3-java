@@ -136,6 +136,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
                     final Document doc = searcher.doc(scoreDoc.doc);
                     final Hit.Builder hitBuilder = Hit.newBuilder();
                     hitBuilder.setId(doc.get("_id"));
+                    addOrderToHit(hitBuilder, scoreDoc);
                     addFieldsToHit(hitBuilder, doc);
                     groupBuilder.addHits(hitBuilder);
                 }

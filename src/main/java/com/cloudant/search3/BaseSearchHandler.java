@@ -24,9 +24,11 @@ import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopFieldDocs;
+import org.apache.lucene.util.BytesRef;
 
 import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.Hit;
@@ -64,14 +66,16 @@ public abstract class BaseSearchHandler implements SearchHandler {
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
             responseBuilder.setMatches(topDocs.totalHits.value);
             for (int i = 0; i < topDocs.scoreDocs.length; i++) {
+                final ScoreDoc scoreDoc = topDocs.scoreDocs[i];
                 final Document doc;
                 if (fieldsToLoad.isEmpty()) {
-                    doc = searcher.doc(topDocs.scoreDocs[i].doc);
+                    doc = searcher.doc(scoreDoc.doc);
                 } else {
-                    doc = searcher.doc(topDocs.scoreDocs[i].doc, defaultFieldsToLoad(fieldsToLoad));
+                    doc = searcher.doc(scoreDoc.doc, defaultFieldsToLoad(fieldsToLoad));
                 }
                 final Hit.Builder hitBuilder = Hit.newBuilder();
                 hitBuilder.setId(doc.get("_id"));
+                addOrderToHit(hitBuilder, scoreDoc);
                 addFieldsToHit(hitBuilder, doc);
                 responseBuilder.addHits(hitBuilder);
             }
@@ -95,6 +99,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 final Document doc = searcher.doc(fieldDoc.doc, defaultFieldsToLoad(fieldsToLoad));
                 final Hit.Builder hitBuilder = Hit.newBuilder();
                 hitBuilder.setId(doc.get("_id"));
+                addOrderToHit(hitBuilder, fieldDoc);
                 addFieldsToHit(hitBuilder, doc);
                 responseBuilder.addHits(hitBuilder);
             }
@@ -104,12 +109,16 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
     protected final void addFieldsToHit(final Hit.Builder hitBuilder, final Document doc) {
         for (final IndexableField field : doc) {
+            if ("_id".equals(field.name())) {
+                continue;
+            }
             final HitField.Builder hitFieldBuilder = HitField.newBuilder();
             hitFieldBuilder.setName(field.name());
             final FieldValue.Builder fieldValueBuilder;
             if (field.stringValue() != null) {
                 fieldValueBuilder = FieldValue.newBuilder().setString(field.stringValue());
             } else if (field.numericValue() != null) {
+                System.err.println(field.numericValue().getClass());
                 fieldValueBuilder = FieldValue.newBuilder().setDouble(field.numericValue().doubleValue());
             } else {
                 continue;
@@ -117,6 +126,25 @@ public abstract class BaseSearchHandler implements SearchHandler {
             hitFieldBuilder.setValue(fieldValueBuilder);
             hitBuilder.addFields(hitFieldBuilder);
         }
+    }
+
+    protected final void addOrderToHit(final Hit.Builder hitBuilder, final ScoreDoc scoreDoc) {
+        if (scoreDoc instanceof FieldDoc) {
+            for (final Object field : ((FieldDoc) scoreDoc).fields) {
+                if (field instanceof Number) {
+                    final double value = ((Number) field).doubleValue();
+                    hitBuilder.addOrder(FieldValue.newBuilder().setDouble(value));
+                } else if (field instanceof BytesRef) {
+                    final String value = ((BytesRef) field).utf8ToString();
+                    hitBuilder.addOrder(FieldValue.newBuilder().setString(value));
+                } else {
+                    logger.error("Unknown order value {} of type {}", field, field.getClass());
+                }
+            }
+        } else {
+            hitBuilder.addOrder(FieldValue.newBuilder().setFloat(scoreDoc.score));
+        }
+
     }
 
     protected abstract <T> T withSearcher(final boolean staleOk, final IOFunction<IndexSearcher, T> f)
