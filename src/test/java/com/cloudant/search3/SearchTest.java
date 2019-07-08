@@ -148,8 +148,6 @@ public class SearchTest extends BaseFDBTest {
 
                 final Hit hit = group.getHits(0);
                 assertEquals("foobar", hit.getId());
-
-                System.out.println(searchResponse);
             }
         }
     }
