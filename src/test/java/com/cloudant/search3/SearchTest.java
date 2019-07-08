@@ -17,6 +17,7 @@ package com.cloudant.search3;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
@@ -33,9 +34,13 @@ import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
+import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
+import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Empty;
 
+import io.grpc.Status;
+import io.grpc.StatusException;
 import io.grpc.stub.StreamObserver;
 
 @RunWith(Parameterized.class)
@@ -101,6 +106,35 @@ public class SearchTest extends BaseFDBTest {
             final SearchResponse searchResponse = searchResponseCollector.lastValue;
             assertEquals(1, searchResponse.getMatches());
             assertEquals("foobar", searchResponse.getHits(0).getId());
+        }
+    }
+
+    @Test
+    public void getSetUpdateSeq() throws Exception {
+        try (final Search search = new Search(DB, factory)) {
+            final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
+
+            {
+                final CollectingStreamObserver<UpdateSeq> collector = new CollectingStreamObserver<UpdateSeq>();
+                search.getUpdateSequence(index, collector);
+                assertNull(collector.lastValue);
+                assertEquals(Status.NOT_FOUND, ((StatusException) collector.lastThrowable).getStatus());
+            }
+
+            {
+                final CollectingStreamObserver<Empty> collector = new CollectingStreamObserver<Empty>();
+                search.setUpdateSequence(SetUpdateSeq.newBuilder().setIndex(index).setSeq("foo").build(), collector);
+                assertSame(Empty.getDefaultInstance(), collector.lastValue);
+            }
+
+            // Wait for the commit :/.
+            Thread.sleep(5001);
+
+            {
+                final CollectingStreamObserver<UpdateSeq> collector = new CollectingStreamObserver<UpdateSeq>();
+                search.getUpdateSequence(index, collector);
+                assertEquals(UpdateSeq.newBuilder().setSeq("foo").build(), collector.lastValue);
+            }
         }
     }
 
