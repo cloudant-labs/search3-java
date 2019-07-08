@@ -47,7 +47,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
         return fieldsToLoad;
     }
 
-    private static int defaultN(final int n) {
+    protected static int defaultN(final int n) {
         return n == 0 ? DEFAULT_N : n;
     }
 
