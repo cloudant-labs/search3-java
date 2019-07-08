@@ -49,12 +49,11 @@ import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
-import com.cloudant.search3.grpc.Search3.SearchStatus;
-import com.cloudant.search3.grpc.Search3.SearchStatus.StatusCode;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.cloudant.search3.grpc.SearchGrpc;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.Empty;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -88,8 +87,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     }
 
-    // This really can't be how we do this?
-    private static final SearchStatus SUCCESS = SearchStatus.newBuilder().setCode(StatusCode.SUCCESS).build();
+    private static final Empty EMPTY = Empty.getDefaultInstance();
 
     private final Database db;
     private final SearchHandlerFactory searchHandlerFactory;
@@ -116,7 +114,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void setUpdateSequence(SetUpdateSeq request, StreamObserver<SearchStatus> responseObserver) {
+    public void setUpdateSequence(SetUpdateSeq request, StreamObserver<Empty> responseObserver) {
         try {
             final SearchHandler handler = getOrOpen(request.getIndex());
             handler.setPendingUpdateSeq(request.getSeq());
@@ -124,12 +122,12 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             LOGGER.catching(e);
             responseObserver.onError(Status.fromThrowable(e).asException());
         }
-        responseObserver.onNext(SUCCESS);
+        responseObserver.onNext(EMPTY);
         responseObserver.onCompleted();
     }
 
     @Override
-    public void delete(final Index request, final StreamObserver<SearchStatus> responseObserver) {
+    public void delete(final Index request, final StreamObserver<Empty> responseObserver) {
         final Subspace subspace;
         try {
             final SearchHandler handler = remove(request);
@@ -139,7 +137,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 txn.clear(subspace.range());
                 return null;
             });
-            responseObserver.onNext(SUCCESS);
+            responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
             LOGGER.info("Deleted index {}.", subspace);
         } catch (final IOException e) {
@@ -219,7 +217,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void updateDocument(final DocumentUpdate request, final StreamObserver<SearchStatus> responseObserver) {
+    public void updateDocument(final DocumentUpdate request, final StreamObserver<Empty> responseObserver) {
         try {
             final SearchHandler handler = getOrOpen(request.getIndex());
             final String id = request.getId();
@@ -229,7 +227,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final Term idTerm = new Term("_id", id);
             final Document doc = toDoc(request);
             handler.updateDocument(idTerm, doc);
-            responseObserver.onNext(SUCCESS);
+            responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
             LOGGER.catching(e);
@@ -238,7 +236,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void deleteDocument(final DocumentDelete request, final StreamObserver<SearchStatus> responseObserver) {
+    public void deleteDocument(final DocumentDelete request, final StreamObserver<Empty> responseObserver) {
         try {
             final SearchHandler handler = getOrOpen(request.getIndex());
             final String id = request.getId();
@@ -247,7 +245,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             }
             final Term idTerm = new Term("_id", id);
             handler.deleteDocument(idTerm);
-            responseObserver.onNext(SUCCESS);
+            responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
             LOGGER.catching(e);

@@ -2,21 +2,22 @@
 
 syntax = "proto3";
 option java_package = "com.cloudant.search3.grpc";
+import "google/protobuf/empty.proto";
 
 service Search {
     // Index operations
-    rpc Delete(Index) returns (SearchStatus);
+    rpc Delete(Index) returns (google.protobuf.Empty);
     rpc GetUpdateSequence(Index) returns (UpdateSeq);
     rpc Info(Index) returns (InfoResponse);
-    rpc SetUpdateSequence(SetUpdateSeq) returns (SearchStatus);
+    rpc SetUpdateSequence(SetUpdateSeq) returns (google.protobuf.Empty);
 
     // Read operations
     rpc Search(SearchRequest) returns (SearchResponse);
     rpc GroupSearch(GroupSearchRequest) returns (GroupSearchResponse);
 
     // Write operations
-    rpc UpdateDocument(DocumentUpdate) returns (SearchStatus);
-    rpc DeleteDocument(DocumentDelete) returns (SearchStatus);
+    rpc UpdateDocument(DocumentUpdate) returns (google.protobuf.Empty);
+    rpc DeleteDocument(DocumentDelete) returns (google.protobuf.Empty);
 }
 
 message UpdateSeq {
@@ -138,12 +139,4 @@ message DocumentUpdate {
 message DocumentDelete {
     Index index = 1;
     string id = 2;
-}
-
-message SearchStatus {
-    enum StatusCode {
-        SUCCESS = 0;
-        FAILURE = 1;
-    }
-    StatusCode code = 1;
 }
