@@ -67,9 +67,11 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     private class CommitTask extends TimerTask {
 
+        private final Subspace index;
         private final SearchHandler handler;
 
-        private CommitTask(final SearchHandler handler) {
+        private CommitTask(final Subspace index, final SearchHandler handler) {
+            this.index = index;
             this.handler = handler;
         }
 
@@ -78,7 +80,9 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             try {
                 handler.commit();
             } catch (final IOException e) {
-                LOGGER.catching(e);
+                LOGGER.warn("Closing failed handler for " + index, e);
+                cancel();
+                handlers.remove(index);
             }
         }
 
@@ -270,7 +274,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             try {
                 final SearchHandler handler = searchHandlerFactory.open(db, key, new StandardAnalyzer());
                 LOGGER.info("Opened index {}.", handler);
-                timer.schedule(new CommitTask(handler), COMMIT_INTERVAL, COMMIT_INTERVAL);
+                timer.schedule(new CommitTask(indexSubspace, handler), COMMIT_INTERVAL, COMMIT_INTERVAL);
                 return handler;
             } catch (final IOException e) {
                 LOGGER.catching(e);
