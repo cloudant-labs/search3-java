@@ -76,8 +76,12 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         }
 
         @Override
-        protected boolean removeEldestEntry(Entry<K, V> eldest) {
-            return size() > capacity;
+        protected boolean removeEldestEntry(final Entry<K, V> eldest) {
+            final boolean result = size() > capacity;
+            if (result) {
+                LOGGER.info("{} evicted by LRU", eldest.getKey());
+            }
+            return result;
         }
 
     }
