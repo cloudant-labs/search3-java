@@ -25,8 +25,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -59,9 +60,11 @@ import io.grpc.stub.StreamObserver;
 
 public final class Search extends SearchGrpc.SearchImplBase implements Closeable {
 
+    private static final int SCHEDULER_THREAD_COUNT = 8;
+
     private static final int MAX_INDEXES_OPEN = 1000;
 
-    private static final int COMMIT_INTERVAL = 5_000;
+    private static final int COMMIT_INTERVAL_SECS = 5;
 
     private static final Logger LOGGER = LogManager.getLogger();
 
@@ -86,7 +89,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     }
 
-    private class CommitTask extends TimerTask {
+    private class CommitTask implements Runnable {
 
         private final Subspace index;
         private final SearchHandler handler;
@@ -102,8 +105,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 handler.commit();
             } catch (final IOException e) {
                 LOGGER.warn("Closing failed handler for " + index, e);
-                cancel();
                 handlers.remove(index);
+                throw new RuntimeException(e);
             }
         }
 
@@ -114,12 +117,12 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     private final Database db;
     private final SearchHandlerFactory searchHandlerFactory;
     private final Map<Subspace, SearchHandler> handlers = new LRU<Subspace, SearchHandler>(MAX_INDEXES_OPEN);
-    private final Timer timer;
+    private final ScheduledExecutorService scheduler;
 
     public Search(final Database db, final SearchHandlerFactory searchHandlerFactory) {
         this.db = db;
         this.searchHandlerFactory = searchHandlerFactory;
-        this.timer = new Timer();
+        this.scheduler = Executors.newScheduledThreadPool(SCHEDULER_THREAD_COUNT);
     }
 
     @Override
@@ -267,7 +270,12 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     @Override
     public void close() {
-        timer.cancel();
+        scheduler.shutdownNow();
+        try {
+            scheduler.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (final InterruptedException e) {
+            // Ignored.
+        }
         handlers.forEach((index, handler) -> {
             try {
                 handler.close();
@@ -285,7 +293,11 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             if (result == null) {
                 result = searchHandlerFactory.open(db, indexSubspace, new StandardAnalyzer());
                 LOGGER.info("Opened index {}.", result);
-                timer.schedule(new CommitTask(indexSubspace, result), COMMIT_INTERVAL, COMMIT_INTERVAL);
+                scheduler.scheduleWithFixedDelay(
+                        new CommitTask(indexSubspace, result),
+                        COMMIT_INTERVAL_SECS,
+                        COMMIT_INTERVAL_SECS,
+                        TimeUnit.SECONDS);
             }
 
             // Insert or update.
