@@ -21,11 +21,12 @@ import static com.cloudant.search3.Converters.toSort;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -58,9 +59,28 @@ import io.grpc.stub.StreamObserver;
 
 public final class Search extends SearchGrpc.SearchImplBase implements Closeable {
 
+    private static final int MAX_INDEXES_OPEN = 1000;
+
     private static final int COMMIT_INTERVAL = 5_000;
 
     private static final Logger LOGGER = LogManager.getLogger();
+
+    private class LRU<K, V> extends LinkedHashMap<K, V> {
+
+        private static final long serialVersionUID = 1L;
+        private final int capacity;
+
+        private LRU(final int capacity) {
+            super(16, 0.75f, true);
+            this.capacity = capacity;
+        }
+
+        @Override
+        protected boolean removeEldestEntry(Entry<K, V> eldest) {
+            return size() > capacity;
+        }
+
+    }
 
     private class CommitTask extends TimerTask {
 
@@ -89,7 +109,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     private final Database db;
     private final SearchHandlerFactory searchHandlerFactory;
-    private final ConcurrentMap<Subspace, SearchHandler> handlers = new ConcurrentHashMap<Subspace, SearchHandler>();
+    private final Map<Subspace, SearchHandler> handlers = new LRU<Subspace, SearchHandler>(MAX_INDEXES_OPEN);
     private final Timer timer;
 
     public Search(final Database db, final SearchHandlerFactory searchHandlerFactory) {
@@ -256,21 +276,18 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     private SearchHandler getOrOpen(final Index index) throws IOException {
         final Subspace indexSubspace = toSubspace(index);
-        final SearchHandler result = handlers.computeIfAbsent(indexSubspace, key -> {
-            try {
-                final SearchHandler handler = searchHandlerFactory.open(db, key, new StandardAnalyzer());
-                LOGGER.info("Opened index {}.", handler);
-                timer.schedule(new CommitTask(indexSubspace, handler), COMMIT_INTERVAL, COMMIT_INTERVAL);
-                return handler;
-            } catch (final IOException e) {
-                LOGGER.catching(e);
-                return null;
+        synchronized (handlers) {
+            SearchHandler result = handlers.get(indexSubspace);
+            if (result == null) {
+                result = searchHandlerFactory.open(db, indexSubspace, new StandardAnalyzer());
+                LOGGER.info("Opened index {}.", result);
+                timer.schedule(new CommitTask(indexSubspace, result), COMMIT_INTERVAL, COMMIT_INTERVAL);
             }
-        });
-        if (result == null) {
-            throw new IOException("I/O exception when opening " + index);
+
+            // Insert or update.
+            handlers.put(indexSubspace, result);
+            return result;
         }
-        return result;
     }
 
     private SearchHandler remove(final Index index) {
