@@ -14,6 +14,7 @@
 
 package com.cloudant.search3;
 
+import static com.cloudant.search3.Converters.toAfter;
 import static com.cloudant.search3.Converters.toDoc;
 import static com.cloudant.search3.Converters.toFieldSet;
 import static com.cloudant.search3.Converters.toQuery;
@@ -36,6 +37,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 
 import com.apple.foundationdb.Database;
@@ -189,16 +191,11 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final int limit = request.getLimit();
             final Set<String> fieldsToLoad = toFieldSet(request);
             final boolean staleOk = request.getStale();
+            final Sort sort = toSort(request);
+            final ScoreDoc after = toAfter(request, sort);
 
             final SearchHandler handler = getOrOpen(request.getIndex());
-
-            final SearchResponse response;
-            if (request.hasSort()) {
-                final Sort sort = toSort(request);
-                response = handler.search(query, limit, sort, fieldsToLoad, staleOk);
-            } else {
-                response = handler.search(query, limit, fieldsToLoad, staleOk);
-            }
+            final SearchResponse response = handler.search(after, query, limit, sort, fieldsToLoad, staleOk);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {

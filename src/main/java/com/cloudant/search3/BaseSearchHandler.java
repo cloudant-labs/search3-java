@@ -15,7 +15,9 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 import org.apache.logging.log4j.Logger;
@@ -27,9 +29,9 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.util.BytesRef;
 
+import com.cloudant.search3.grpc.Search3.Bookmark;
 import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.HitField;
@@ -57,14 +59,22 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
     @Override
     public final SearchResponse search(
+            final ScoreDoc after,
             final Query query,
             final int n,
+            final Sort sort,
             final Set<String> fieldsToLoad,
             final boolean staleOk) throws IOException {
         return withSearcher(staleOk, searcher -> {
-            final TopDocs topDocs = searcher.search(query, defaultN(n));
+            final TopDocs topDocs;
+            if (sort == null) {
+                topDocs = searcher.searchAfter(after, query, defaultN(n));
+            } else {
+                topDocs = searcher.searchAfter(after, query, defaultN(n), sort);
+            }
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
             responseBuilder.setMatches(topDocs.totalHits.value);
+            addBookmark(responseBuilder, topDocs);
             for (int i = 0; i < topDocs.scoreDocs.length; i++) {
                 final ScoreDoc scoreDoc = topDocs.scoreDocs[i];
                 final Document doc;
@@ -83,28 +93,12 @@ public abstract class BaseSearchHandler implements SearchHandler {
         });
     }
 
-    @Override
-    public final SearchResponse search(
-            final Query query,
-            final int n,
-            final Sort sort,
-            final Set<String> fieldsToLoad,
-            final boolean staleOk) throws IOException {
-        return withSearcher(staleOk, searcher -> {
-            final TopFieldDocs topFieldDocs = searcher.search(query, defaultN(n), sort);
-            final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
-            responseBuilder.setMatches(topFieldDocs.totalHits.value);
-            for (int i = 0; i < topFieldDocs.scoreDocs.length; i++) {
-                final FieldDoc fieldDoc = (FieldDoc) topFieldDocs.scoreDocs[i];
-                final Document doc = searcher.doc(fieldDoc.doc, defaultFieldsToLoad(fieldsToLoad));
-                final Hit.Builder hitBuilder = Hit.newBuilder();
-                hitBuilder.setId(doc.get("_id"));
-                addOrderToHit(hitBuilder, fieldDoc);
-                addFieldsToHit(hitBuilder, doc);
-                responseBuilder.addHits(hitBuilder);
-            }
-            return responseBuilder.build();
-        });
+    private void addBookmark(final SearchResponse.Builder responseBuilder, final TopDocs topDocs) {
+        if (topDocs.scoreDocs.length > 0) {
+            final ScoreDoc lastDoc = topDocs.scoreDocs[topDocs.scoreDocs.length - 1];
+            final Bookmark bookmark = Bookmark.newBuilder().addAllOrder(toFieldValues(lastDoc)).build();
+            responseBuilder.setBookmark(bookmark);
+        }
     }
 
     protected final void addFieldsToHit(final Hit.Builder hitBuilder, final Document doc) {
@@ -118,7 +112,6 @@ public abstract class BaseSearchHandler implements SearchHandler {
             if (field.stringValue() != null) {
                 fieldValueBuilder = FieldValue.newBuilder().setString(field.stringValue());
             } else if (field.numericValue() != null) {
-                System.err.println(field.numericValue().getClass());
                 fieldValueBuilder = FieldValue.newBuilder().setDouble(field.numericValue().doubleValue());
             } else {
                 continue;
@@ -129,22 +122,30 @@ public abstract class BaseSearchHandler implements SearchHandler {
     }
 
     protected final void addOrderToHit(final Hit.Builder hitBuilder, final ScoreDoc scoreDoc) {
+        hitBuilder.addAllOrder(toFieldValues(scoreDoc));
+    }
+
+    private Iterable<FieldValue> toFieldValues(final ScoreDoc scoreDoc) {
+        final List<FieldValue> result = new ArrayList<FieldValue>();
         if (scoreDoc instanceof FieldDoc) {
-            for (final Object field : ((FieldDoc) scoreDoc).fields) {
+            final Object[] fields = ((FieldDoc) scoreDoc).fields;
+            for (int i = 0; i < fields.length; i++) {
+                Object field = fields[i];
                 if (field instanceof Number) {
                     final double value = ((Number) field).doubleValue();
-                    hitBuilder.addOrder(FieldValue.newBuilder().setDouble(value));
+                    result.add(FieldValue.newBuilder().setDouble(value).build());
                 } else if (field instanceof BytesRef) {
                     final String value = ((BytesRef) field).utf8ToString();
-                    hitBuilder.addOrder(FieldValue.newBuilder().setString(value));
+                    result.add(FieldValue.newBuilder().setString(value).build());
                 } else {
                     logger.error("Unknown order value {} of type {}", field, field.getClass());
                 }
             }
         } else {
-            hitBuilder.addOrder(FieldValue.newBuilder().setFloat(scoreDoc.score));
+            result.add(FieldValue.newBuilder().setFloat(scoreDoc.score).build());
         }
-
+        result.add(FieldValue.newBuilder().setInt(scoreDoc.doc).build());
+        return result;
     }
 
     protected abstract <T> T withSearcher(final boolean staleOk, final IOFunction<IndexSearcher, T> f)

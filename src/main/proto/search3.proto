@@ -46,11 +46,15 @@ message Sort {
     repeated string fields = 1;
 }
 
+message Bookmark {
+    repeated FieldValue order = 1;
+}
+
 message SearchRequest {
     Index index = 1;
     string query = 2;
     uint32 limit = 3;
-    string bookmark = 4;
+    Bookmark bookmark = 4;
     bool stale = 5;
     Sort sort = 6;
     string partition = 7;
@@ -61,7 +65,7 @@ message SearchRequest {
 }
 
 message SearchResponse {
-    string bookmark = 1;
+    Bookmark bookmark = 1;
     uint64 matches = 2;
     repeated Hit hits = 3;
 }

@@ -20,6 +20,7 @@ import java.util.Set;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
@@ -45,9 +46,8 @@ public interface SearchHandler {
 
     InfoResponse info() throws IOException;
 
-    SearchResponse search(Query query, int n, Set<String> fieldsToLoad, boolean staleOk) throws IOException;
-
-    SearchResponse search(Query query, int n, Sort sort, Set<String> fieldsToLoad, boolean staleOk) throws IOException;
+    SearchResponse search(ScoreDoc after, Query query, int n, Sort sort, Set<String> fieldsToLoad, boolean staleOk)
+            throws IOException;
 
     String getUpdateSeq();
 

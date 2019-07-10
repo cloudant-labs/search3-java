@@ -31,12 +31,15 @@ import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
 
 import com.cloudant.search3.grpc.Search3;
+import com.cloudant.search3.grpc.Search3.Bookmark;
 import com.cloudant.search3.grpc.Search3.DocumentField;
 import com.cloudant.search3.grpc.Search3.DocumentUpdate;
 import com.cloudant.search3.grpc.Search3.FieldValue;
@@ -73,7 +76,7 @@ public final class Converters {
 
     public static Sort toSort(final Search3.Sort sort) throws ParseException {
         if (sort.getFieldsCount() == 0) {
-            return Sort.RELEVANCE;
+            return null;
         }
 
         final SortField[] sortFields = new SortField[sort.getFieldsCount()];
@@ -118,6 +121,51 @@ public final class Converters {
             }
         }
         return new Sort(sortFields);
+    }
+
+    public static ScoreDoc toAfter(final SearchRequest request, final Sort sort) {
+        if (!request.hasBookmark()) {
+            return null;
+        }
+
+        final Bookmark bookmark = request.getBookmark();
+
+        // Default sort order (by relevance).
+        if (sort == null) {
+            final float score = bookmark.getOrder(0).getFloat();
+            final int doc = bookmark.getOrder(1).getInt();
+            return new ScoreDoc(doc, score);
+        }
+
+        // Custom sort order.
+        final Object[] fields = new Object[bookmark.getOrderCount()];
+        for (int i = 0; i < fields.length - 1; i++) {
+            final FieldValue value = bookmark.getOrder(i);
+            switch (value.getValueCase()) {
+            case BOOL:
+                fields[i] = value.getBool();
+                break;
+            case DOUBLE:
+                fields[i] = value.getDouble();
+                break;
+            case FLOAT:
+                fields[i] = value.getFloat();
+                break;
+            case INT:
+                fields[i] = value.getInt();
+                break;
+            case LONG:
+                fields[i] = value.getLong();
+                break;
+            case STRING:
+                fields[i] = value.getString();
+                break;
+            default:
+                throw new IllegalArgumentException(value + " is malformed in bookmark");
+            }
+        }
+        final int doc = bookmark.getOrder(fields.length - 1).getInt();
+        return new FieldDoc(doc, Float.NaN, fields);
     }
 
     public static Document toDoc(final DocumentUpdate request) throws IOException {
