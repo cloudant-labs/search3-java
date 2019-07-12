@@ -171,6 +171,8 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             final Map<String, String> commitData = getLiveCommitData();
             if (commitData != null) {
                 updateSeq = commitData.get("update_seq");
+            } else {
+                updateSeq = "0";
             }
         }
         return updateSeq;

@@ -94,7 +94,7 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
         return db.read(txn -> {
             return txn.get(updateSeqKey).thenApply(v -> {
                 if (v == null) {
-                    return null;
+                    return "0";
                 }
                 return Tuple.fromBytes(v).getString(0);
             });
