@@ -37,6 +37,7 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.util.BytesRef;
 
 import com.cloudant.search3.grpc.Search3;
 import com.cloudant.search3.grpc.Search3.Bookmark;
@@ -138,8 +139,8 @@ public final class Converters {
         }
 
         // Custom sort order.
-        final Object[] fields = new Object[bookmark.getOrderCount()];
-        for (int i = 0; i < fields.length - 1; i++) {
+        final Object[] fields = new Object[bookmark.getOrderCount() - 1];
+        for (int i = 0; i < fields.length; i++) {
             final FieldValue value = bookmark.getOrder(i);
             switch (value.getValueCase()) {
             case BOOL:
@@ -158,13 +159,13 @@ public final class Converters {
                 fields[i] = value.getLong();
                 break;
             case STRING:
-                fields[i] = value.getString();
+                fields[i] = new BytesRef(value.getString());
                 break;
             default:
                 throw new IllegalArgumentException(value + " is malformed in bookmark");
             }
         }
-        final int doc = bookmark.getOrder(fields.length - 1).getInt();
+        final int doc = bookmark.getOrder(bookmark.getOrderCount() - 1).getInt();
         return new FieldDoc(doc, Float.NaN, fields);
     }
 
