@@ -155,14 +155,12 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public void updateDocument(final Term term, final Document doc) throws IOException {
-        logger.info("updateDocument({}, {})", term, doc);
         this.writer.updateDocument(term, doc);
         this.dirty = true;
     }
 
     @Override
     public void deleteDocument(final Term term) throws IOException {
-        logger.info("deleteDocument({})", term);
         this.writer.deleteDocuments(term);
         this.dirty = true;
     }
