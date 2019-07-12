@@ -139,6 +139,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             }
         } catch (final IOException e) {
             responseObserver.onError(fromThrowable(e));
+        } catch (final RuntimeException e) {
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -150,6 +152,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            responseObserver.onError(fromThrowable(e));
+        } catch (final RuntimeException e) {
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -170,6 +174,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             LOGGER.info("Deleted index {}.", subspace);
         } catch (final IOException e) {
             responseObserver.onError(fromThrowable(e));
+        } catch (final RuntimeException e) {
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -180,6 +186,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(handler.info());
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            responseObserver.onError(fromThrowable(e));
+        } catch (final RuntimeException e) {
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -201,6 +209,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         } catch (final IOException e) {
             responseObserver.onError(fromThrowable(e));
         } catch (final ParseException e) {
+            responseObserver.onError(fromThrowable(e));
+        } catch (final RuntimeException e) {
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -227,6 +237,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onError(fromThrowable(e));
         } catch (final ParseException e) {
             responseObserver.onError(fromThrowable(e));
+        } catch (final RuntimeException e) {
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -245,6 +257,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onCompleted();
         } catch (final IOException e) {
             responseObserver.onError(fromThrowable(e));
+        } catch (final RuntimeException e) {
+            responseObserver.onError(fromThrowable(e));
         }
     }
 
@@ -261,6 +275,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            responseObserver.onError(fromThrowable(e));
+        } catch (final RuntimeException e) {
             responseObserver.onError(fromThrowable(e));
         }
     }
