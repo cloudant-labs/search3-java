@@ -43,6 +43,7 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     private String pendingUpdateSeq;
 
     FDBIndexWriterSearchHandler(final Database db, final Subspace index, final Analyzer analyzer) {
+        super(analyzer);
         this.toString = String.format("FDBIndexWriterSearchHandler(%s)", index);
         this.logger = LogManager.getLogger(toString);
         this.db = db;

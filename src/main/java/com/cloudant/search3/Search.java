@@ -17,11 +17,11 @@ package com.cloudant.search3;
 import static com.cloudant.search3.Converters.toAfter;
 import static com.cloudant.search3.Converters.toDoc;
 import static com.cloudant.search3.Converters.toFieldSet;
-import static com.cloudant.search3.Converters.toQuery;
 import static com.cloudant.search3.Converters.toSort;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -237,7 +237,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void search(final SearchRequest request, final StreamObserver<SearchResponse> responseObserver) {
         try {
-            final Query query = toQuery(request);
             final int limit = request.getLimit();
             final Set<String> fieldsToLoad = toFieldSet(request);
             final boolean staleOk = request.getStale();
@@ -245,6 +244,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final ScoreDoc after = toAfter(request, sort);
 
             final SearchHandler handler = openExisting(request.getIndex());
+            final Query query = handler.parse(request.getQuery(), request.getPartition());
             final SearchResponse response = handler.search(after, query, limit, sort, fieldsToLoad, staleOk);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -262,7 +262,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final GroupSearchRequest request,
             final StreamObserver<GroupSearchResponse> responseObserver) {
         try {
-            final Query query = toQuery(request);
             final int limit = request.getLimit();
             final boolean staleOk = request.getStale();
             final String groupBy = request.getGroupBy();
@@ -271,6 +270,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final int groupLimit = request.getGroupLimit();
 
             final SearchHandler handler = openExisting(request.getIndex());
+            final Query query = handler.parse(request.getQuery(), "");
             final GroupSearchResponse response = handler
                     .groupingSearch(query, groupBy, groupSort, groupOffset, groupLimit, limit, staleOk);
             responseObserver.onNext(response);

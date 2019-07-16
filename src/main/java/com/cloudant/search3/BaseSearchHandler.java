@@ -21,13 +21,20 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.BytesRef;
 
@@ -56,6 +63,31 @@ public abstract class BaseSearchHandler implements SearchHandler {
     }
 
     protected Logger logger;
+    private final ThreadLocal<QueryParser> queryParser;
+
+    protected BaseSearchHandler(final Analyzer analyzer) {
+        this.queryParser = new ThreadLocal<QueryParser>() {
+
+            @Override
+            protected QueryParser initialValue() {
+                return new Search3QueryParser(analyzer);
+            }
+
+        };
+    }
+
+    @Override
+    public final Query parse(final String queryString, final String partition) throws ParseException {
+        final Query baseQuery = queryParser.get().parse(queryString);
+        if (partition.length() > 0) {
+            final BooleanQuery.Builder builder = new BooleanQuery.Builder();
+            builder.add(new TermQuery(new Term("_partition", partition)), Occur.MUST);
+            builder.add(baseQuery, Occur.MUST);
+            return builder.build();
+        } else {
+            return baseQuery;
+        }
+    }
 
     @Override
     public final SearchResponse search(

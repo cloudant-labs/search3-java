@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import org.apache.logging.log4j.LogManager;
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
@@ -53,7 +54,8 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private String pendingUpdateSeq;
     private boolean dirty = false;
 
-    FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager) {
+    FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager, final Analyzer analyzer) {
+        super(analyzer);
         this.toString = String.format("FDBDirectorySearchHandler(%s)", writer.getDirectory());
         this.logger = LogManager.getLogger(writer.getDirectory().toString());
         this.writer = writer;

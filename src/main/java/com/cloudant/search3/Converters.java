@@ -23,20 +23,12 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.queryparser.classic.QueryParser;
-import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FieldDoc;
-import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
-import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.util.BytesRef;
 
 import com.cloudant.search3.grpc.Search3;
@@ -48,9 +40,6 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 
 public final class Converters {
-
-    private static final Analyzer analyzer = new StandardAnalyzer(); // TODO specify by index.
-    private static final QueryParser queryParser = new QueryParser("default", analyzer);
 
     private static final SortField INVERSE_FIELD_SCORE = new SortField(null, SortField.Type.SCORE, true);
     private static final SortField INVERSE_FIELD_DOC = new SortField(null, SortField.Type.DOC, true);
@@ -199,29 +188,6 @@ public final class Converters {
             }
         }
         return builder.build();
-    }
-
-    public static Query toQuery(final SearchRequest request) throws ParseException {
-        return toQuery(request.getQuery(), request.getPartition());
-    }
-
-    public static Query toQuery(final GroupSearchRequest request) throws ParseException {
-        return toQuery(request.getQuery(), "");
-    }
-
-    /**
-     * Does "partition" even make sense for couch-on-fdb?
-     */
-    private static Query toQuery(final String queryString, final String partition) throws ParseException {
-        final Query baseQuery = queryParser.parse(queryString);
-        if (partition.length() > 0) {
-            final BooleanQuery.Builder builder = new BooleanQuery.Builder();
-            builder.add(new TermQuery(new Term("_partition", partition)), Occur.MUST);
-            builder.add(baseQuery, Occur.MUST);
-            return builder.build();
-        } else {
-            return baseQuery;
-        }
     }
 
 }

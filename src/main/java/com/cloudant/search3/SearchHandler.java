@@ -19,6 +19,7 @@ import java.util.Set;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
@@ -45,6 +46,8 @@ public interface SearchHandler {
             boolean staleOk) throws IOException;
 
     InfoResponse info() throws IOException;
+
+    Query parse(final String queryString, final String partition) throws ParseException;
 
     SearchResponse search(ScoreDoc after, Query query, int n, Sort sort, Set<String> fieldsToLoad, boolean staleOk)
             throws IOException;

@@ -39,7 +39,7 @@ public final class FDBDirectorySearchHandlerFactory implements SearchHandlerFact
         final IndexWriterConfig indexWriterConfig = indexWriterConfig(analyzer);
         final IndexWriter writer = new IndexWriter(dir, indexWriterConfig);
         final SearcherManager manager = new SearcherManager(writer, null);
-        return new FDBDirectorySearchHandler(writer, manager);
+        return new FDBDirectorySearchHandler(writer, manager, analyzer);
     }
 
     /**
