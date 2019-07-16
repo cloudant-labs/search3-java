@@ -14,7 +14,6 @@
 
 package com.cloudant.search3;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
@@ -22,10 +21,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import org.apache.logging.log4j.LogManager;
-import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
@@ -35,12 +32,8 @@ import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.grouping.GroupDocs;
 import org.apache.lucene.search.grouping.GroupingSearch;
 import org.apache.lucene.search.grouping.TopGroups;
-import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 
-import com.apple.foundationdb.Database;
-import com.apple.foundationdb.subspace.Subspace;
-import com.cloudant.fdblucene.FDBDirectory;
 import com.cloudant.search3.grpc.Search3.Group;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
@@ -52,38 +45,7 @@ import com.cloudant.search3.grpc.Search3.InfoResponse;
  */
 public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
-    public static SearchHandlerFactory factory() {
-        return new SearchHandlerFactory() {
-
-            @Override
-            public SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer)
-                    throws IOException {
-                final Directory dir = FDBDirectory.open(db, index, PAGE_SIZE, TXN_SIZE);
-                forciblyUnlock(dir);
-                final IndexWriterConfig indexWriterConfig = indexWriterConfig(analyzer);
-                final IndexWriter writer = new IndexWriter(dir, indexWriterConfig);
-                final SearcherManager manager = new SearcherManager(writer, null);
-                return new FDBDirectorySearchHandler(writer, manager);
-            }
-
-            /**
-             * The current holder of the lock will know they lost the lock on their next
-             * attempt at a destructive operation and will crash cleanly.
-             */
-            private void forciblyUnlock(final Directory dir) throws IOException {
-                try {
-                    dir.deleteFile(IndexWriter.WRITE_LOCK_NAME);
-                } catch (final FileNotFoundException e) {
-                    // Lock didn't exist.
-                }
-            }
-
-        };
-    }
-
     private static final double GROUP_CACHING_MB = 4.0;
-    private static final int PAGE_SIZE = 10_000;
-    private static final int TXN_SIZE = 10 * PAGE_SIZE;
 
     private final String toString;
     private final IndexWriter writer;
@@ -92,7 +54,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private String updateSeq;
     private boolean dirty = false;
 
-    private FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager) {
+    FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager) {
         this.toString = String.format("FDBDirectorySearchHandler(%s)", writer.getDirectory());
         this.logger = LogManager.getLogger(writer.getDirectory().toString());
         this.writer = writer;
@@ -215,12 +177,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     private Iterable<Entry<String, String>> createLiveCommitData(final String key, final String value) {
         return Collections.singletonMap(key, value).entrySet();
-    }
-
-    private static IndexWriterConfig indexWriterConfig(final Analyzer analyzer) {
-        final IndexWriterConfig result = new IndexWriterConfig(analyzer);
-        result.setUseCompoundFile(false);
-        return result;
     }
 
     @Override

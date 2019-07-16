@@ -32,19 +32,7 @@ import com.cloudant.fdblucene.FDBIndexWriter;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 
-public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
-
-    public static SearchHandlerFactory factory() {
-        return new SearchHandlerFactory() {
-
-            @Override
-            public SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer)
-                    throws IOException {
-                return new FDBIndexWriterSearchHandler(db, index, analyzer);
-            }
-
-        };
-    }
+public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
 
     private final String toString;
     private final Database db;
@@ -54,7 +42,7 @@ public class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     private final IndexSearcher searcher;
     private String pendingUpdateSeq;
 
-    private FDBIndexWriterSearchHandler(final Database db, final Subspace index, final Analyzer analyzer) {
+    FDBIndexWriterSearchHandler(final Database db, final Subspace index, final Analyzer analyzer) {
         this.toString = String.format("FDBIndexWriterSearchHandler(%s)", index);
         this.logger = LogManager.getLogger(toString);
         this.db = db;

@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.jcs.utils.struct.LRUMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,6 +41,7 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 
 import com.apple.foundationdb.Database;
+import com.apple.foundationdb.FDB;
 import com.apple.foundationdb.subspace.Subspace;
 import com.cloudant.search3.grpc.Search3.DocumentDelete;
 import com.cloudant.search3.grpc.Search3.DocumentUpdate;
@@ -61,12 +63,6 @@ import io.grpc.StatusException;
 import io.grpc.stub.StreamObserver;
 
 public final class Search extends SearchGrpc.SearchImplBase implements Closeable {
-
-    private static final int SCHEDULER_THREAD_COUNT = 8;
-
-    private static final int MAX_INDEXES_OPEN = 1000;
-
-    private static final int COMMIT_INTERVAL_SECS = 5;
 
     private static final Logger LOGGER = LogManager.getLogger();
 
@@ -93,11 +89,11 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     }
 
-    private static final Empty EMPTY = Empty.getDefaultInstance();
+    private static class SearchHandlerLRUMap extends LRUMap<Subspace, SearchHandler> {
 
-    private final Database db;
-    private final SearchHandlerFactory searchHandlerFactory;
-    private final Map<Subspace, SearchHandler> handlers = new LRUMap<Subspace, SearchHandler>(MAX_INDEXES_OPEN) {
+        public SearchHandlerLRUMap(int maxObjects) {
+            super(maxObjects);
+        }
 
         @Override
         protected void processRemovedLRU(Subspace key, SearchHandler value) {
@@ -108,15 +104,43 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 LOGGER.warn("IOException when closing handler", e);
             }
         }
+    }
 
-    };
+    private static final Empty EMPTY = Empty.getDefaultInstance();
 
+    private final Database db;
     private final ScheduledExecutorService scheduler;
+    private final SearchHandlerFactory searchHandlerFactory;
+    private final Map<Subspace, SearchHandler> handlers;
+    private final int commitIntervalSecs;
 
-    public Search(final Database db, final SearchHandlerFactory searchHandlerFactory) {
+    public static Search create(final Configuration config) throws Exception {
+        // Initialize FDB.
+        FDB.selectAPIVersion(config.getInt("fdb.version"));
+
+        final Database db = FDB.instance().open();
+
+        final SearchHandlerFactory searchHandlerFactory = (SearchHandlerFactory) Class
+                .forName(config.getString("handler_factory")).newInstance();
+
+        final ScheduledExecutorService scheduler = Executors
+                .newScheduledThreadPool(config.getInt("scheduler_thread_count"));
+
+        final Map<Subspace, SearchHandler> handlers = new SearchHandlerLRUMap(config.getInt("max_indexes_open"));
+
+        final int commitIntervalSecs = config.getInt("commit_interval_secs");
+
+        return new Search(db, searchHandlerFactory, scheduler, handlers, commitIntervalSecs);
+    }
+
+    private Search(final Database db, final SearchHandlerFactory searchHandlerFactory,
+            final ScheduledExecutorService scheduler, final Map<Subspace, SearchHandler> handlers,
+            final int commitIntervalSecs) {
         this.db = db;
         this.searchHandlerFactory = searchHandlerFactory;
-        this.scheduler = Executors.newScheduledThreadPool(SCHEDULER_THREAD_COUNT);
+        this.scheduler = scheduler;
+        this.handlers = handlers;
+        this.commitIntervalSecs = commitIntervalSecs;
     }
 
     @Override
@@ -170,8 +194,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         }
         scheduler.scheduleWithFixedDelay(
                 new CommitTask(subspace, handler),
-                COMMIT_INTERVAL_SECS,
-                COMMIT_INTERVAL_SECS,
+                commitIntervalSecs,
+                commitIntervalSecs,
                 TimeUnit.SECONDS);
         responseObserver.onNext(EMPTY);
         responseObserver.onCompleted();
