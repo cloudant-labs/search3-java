@@ -145,7 +145,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void getUpdateSequence(Index request, StreamObserver<UpdateSeq> responseObserver) {
+    public void getUpdateSequence(final Index request, final StreamObserver<UpdateSeq> responseObserver) {
         try {
             final SearchHandler handler = openExisting(request);
             final String result = handler.getUpdateSeq();
@@ -160,7 +160,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void setUpdateSequence(SetUpdateSeq request, StreamObserver<Empty> responseObserver) {
+    public void setUpdateSequence(final SetUpdateSeq request, final StreamObserver<Empty> responseObserver) {
         try {
             final SearchHandler handler = openExisting(request.getIndex());
             handler.setPendingUpdateSeq(request.getSeq());
