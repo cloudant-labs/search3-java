@@ -6,6 +6,7 @@ import "google/protobuf/empty.proto";
 
 service Search {
     // Index operations
+    rpc Open(OpenIndex) returns (google.protobuf.Empty);
     rpc Delete(Index) returns (google.protobuf.Empty);
     rpc GetUpdateSequence(Index) returns (UpdateSeq);
     rpc Info(Index) returns (InfoResponse);
@@ -18,6 +19,17 @@ service Search {
     // Write operations
     rpc UpdateDocument(DocumentUpdate) returns (google.protobuf.Empty);
     rpc DeleteDocument(DocumentDelete) returns (google.protobuf.Empty);
+}
+
+message OpenIndex {
+	Index index = 1;
+	AnalyzerSpec default = 2;
+	map<string, AnalyzerSpec> per_field = 3;
+}
+
+message AnalyzerSpec {
+	string name = 1;
+	repeated string stopwords = 2;
 }
 
 message UpdateSeq {

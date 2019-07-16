@@ -19,6 +19,7 @@ import static org.junit.Assert.assertThat;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.fi.FinnishAnalyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.junit.Test;
 
@@ -35,6 +36,11 @@ public class SupportedAnalyzersTest {
     @Test
     public void testStandard() {
         assertThat(single("standard"), instanceOf(StandardAnalyzer.class));
+    }
+
+    @Test
+    public void testFinnish() {
+        assertThat(single("finnish"), instanceOf(FinnishAnalyzer.class));
     }
 
     private Analyzer single(final String name) {

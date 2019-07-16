@@ -22,17 +22,16 @@ import static com.cloudant.search3.Converters.toSort;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.jcs.utils.struct.LRUMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
@@ -48,6 +47,7 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
+import com.cloudant.search3.grpc.Search3.OpenIndex;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
@@ -69,27 +69,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     private static final int COMMIT_INTERVAL_SECS = 5;
 
     private static final Logger LOGGER = LogManager.getLogger();
-
-    private class LRU<K, V> extends LinkedHashMap<K, V> {
-
-        private static final long serialVersionUID = 1L;
-        private final int capacity;
-
-        private LRU(final int capacity) {
-            super(16, 0.75f, true);
-            this.capacity = capacity;
-        }
-
-        @Override
-        protected boolean removeEldestEntry(final Entry<K, V> eldest) {
-            final boolean result = size() > capacity;
-            if (result) {
-                LOGGER.info("{} evicted by LRU", eldest.getKey());
-            }
-            return result;
-        }
-
-    }
 
     private class CommitTask implements Runnable {
 
@@ -118,7 +97,20 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     private final Database db;
     private final SearchHandlerFactory searchHandlerFactory;
-    private final Map<Subspace, SearchHandler> handlers = new LRU<Subspace, SearchHandler>(MAX_INDEXES_OPEN);
+    private final Map<Subspace, SearchHandler> handlers = new LRUMap<Subspace, SearchHandler>(MAX_INDEXES_OPEN) {
+
+        @Override
+        protected void processRemovedLRU(Subspace key, SearchHandler value) {
+            try {
+                value.close();
+                LOGGER.info("LRU closed {}", value);
+            } catch (final IOException e) {
+                LOGGER.warn("IOException when closing handler", e);
+            }
+        }
+
+    };
+
     private final ScheduledExecutorService scheduler;
 
     public Search(final Database db, final SearchHandlerFactory searchHandlerFactory) {
@@ -130,7 +122,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void getUpdateSequence(Index request, StreamObserver<UpdateSeq> responseObserver) {
         try {
-            final SearchHandler handler = getOrOpen(request);
+            final SearchHandler handler = openExisting(request);
             final String result = handler.getUpdateSeq();
             final UpdateSeq updateSeq = UpdateSeq.newBuilder().setSeq(result).build();
             responseObserver.onNext(updateSeq);
@@ -145,7 +137,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void setUpdateSequence(SetUpdateSeq request, StreamObserver<Empty> responseObserver) {
         try {
-            final SearchHandler handler = getOrOpen(request.getIndex());
+            final SearchHandler handler = openExisting(request.getIndex());
             handler.setPendingUpdateSeq(request.getSeq());
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
@@ -157,11 +149,39 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
+    public void open(final OpenIndex request, final StreamObserver<Empty> responseObserver) {
+        final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(request);
+        final Subspace subspace = toSubspace(request.getIndex());
+        SearchHandler handler;
+        try {
+            handler = searchHandlerFactory.open(db, subspace, analyzer);
+            LOGGER.info("Opened index {}", handler);
+        } catch (final IOException e) {
+            responseObserver.onError(fromThrowable(e));
+            return;
+        }
+        final SearchHandler oldHandler = handlers.put(subspace, handler);
+        if (oldHandler != null) {
+            try {
+                oldHandler.close();
+            } catch (final IOException e) {
+                LOGGER.warn("IOException when closing old handler", e);
+            }
+        }
+        scheduler.scheduleWithFixedDelay(
+                new CommitTask(subspace, handler),
+                COMMIT_INTERVAL_SECS,
+                COMMIT_INTERVAL_SECS,
+                TimeUnit.SECONDS);
+        responseObserver.onNext(EMPTY);
+        responseObserver.onCompleted();
+    }
+
+    @Override
     public void delete(final Index request, final StreamObserver<Empty> responseObserver) {
-        final Subspace subspace;
         try {
             final SearchHandler handler = remove(request);
-            subspace = toSubspace(request);
+            final Subspace subspace = toSubspace(request);
             handler.close();
             db.run(txn -> {
                 txn.clear(subspace.range());
@@ -180,7 +200,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void info(final Index request, final StreamObserver<InfoResponse> responseObserver) {
         try {
-            final SearchHandler handler = getOrOpen(request);
+            final SearchHandler handler = openExisting(request);
             responseObserver.onNext(handler.info());
             responseObserver.onCompleted();
         } catch (final IOException e) {
@@ -200,7 +220,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final Sort sort = toSort(request);
             final ScoreDoc after = toAfter(request, sort);
 
-            final SearchHandler handler = getOrOpen(request.getIndex());
+            final SearchHandler handler = openExisting(request.getIndex());
             final SearchResponse response = handler.search(after, query, limit, sort, fieldsToLoad, staleOk);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -226,7 +246,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final int groupOffset = request.getGroupOffset();
             final int groupLimit = request.getGroupLimit();
 
-            final SearchHandler handler = getOrOpen(request.getIndex());
+            final SearchHandler handler = openExisting(request.getIndex());
             final GroupSearchResponse response = handler
                     .groupingSearch(query, groupBy, groupSort, groupOffset, groupLimit, limit, staleOk);
             responseObserver.onNext(response);
@@ -243,7 +263,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void updateDocument(final DocumentUpdate request, final StreamObserver<Empty> responseObserver) {
         try {
-            final SearchHandler handler = getOrOpen(request.getIndex());
+            final SearchHandler handler = openExisting(request.getIndex());
             final String id = request.getId();
             if (id == null || id.isEmpty()) {
                 throw new IOException("doc id is missing.");
@@ -263,7 +283,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void deleteDocument(final DocumentDelete request, final StreamObserver<Empty> responseObserver) {
         try {
-            final SearchHandler handler = getOrOpen(request.getIndex());
+            final SearchHandler handler = openExisting(request.getIndex());
             final String id = request.getId();
             if (id == null || id.isEmpty()) {
                 throw new IOException("doc id is missing.");
@@ -297,29 +317,17 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         handlers.clear();
     }
 
-    private SearchHandler getOrOpen(final Index index) throws IOException {
+    private SearchHandler openExisting(final Index index) throws IOException {
         final Subspace indexSubspace = toSubspace(index);
-        synchronized (handlers) {
-            SearchHandler result = handlers.get(indexSubspace);
-            if (result == null) {
-                result = searchHandlerFactory.open(db, indexSubspace, new StandardAnalyzer());
-                LOGGER.info("Opened index {}.", result);
-                scheduler.scheduleWithFixedDelay(
-                        new CommitTask(indexSubspace, result),
-                        COMMIT_INTERVAL_SECS,
-                        COMMIT_INTERVAL_SECS,
-                        TimeUnit.SECONDS);
-            }
-
-            // Insert or update.
-            handlers.put(indexSubspace, result);
-            return result;
+        final SearchHandler result = handlers.get(indexSubspace);
+        if (result == null) {
+            throw new IllegalStateException("index not opened");
         }
+        return result;
     }
 
     private SearchHandler remove(final Index index) {
-        final Subspace indexSubspace = toSubspace(index);
-        return handlers.remove(indexSubspace);
+        return handlers.remove(toSubspace(index));
     }
 
     private Subspace toSubspace(final Index index) {
@@ -331,13 +339,17 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     private StatusException fromThrowable(final Throwable t) {
+        final Status status;
         if (t instanceof ParseException) {
-            return Status.INVALID_ARGUMENT.withDescription(t.getMessage()).asException();
+            status = Status.INVALID_ARGUMENT;
+        } else if (t instanceof IOException) {
+            status = Status.ABORTED;
+        } else if (t instanceof IllegalStateException) {
+            status = Status.FAILED_PRECONDITION;
+        } else {
+            status = Status.fromThrowable(t);
         }
-        if (t instanceof IOException) {
-            return Status.ABORTED.withDescription(t.getMessage()).asException();
-        }
-        return Status.fromThrowable(t).withDescription(t.getMessage()).asException();
+        return status.withDescription(t.getMessage()).asException();
     }
 
 }
