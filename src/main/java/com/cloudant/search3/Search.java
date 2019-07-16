@@ -153,8 +153,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(updateSeq);
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -167,8 +169,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -216,8 +220,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onCompleted();
             LOGGER.info("Deleted index {}.", subspace);
         } catch (final IOException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -229,8 +235,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(handler.info());
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -250,10 +258,13 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final ParseException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -277,10 +288,13 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final ParseException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -299,8 +313,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         }
     }
@@ -318,8 +334,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
+            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         }
     }
