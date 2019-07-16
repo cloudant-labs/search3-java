@@ -51,7 +51,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private final IndexWriter writer;
     private final SearcherManager manager;
     private String pendingUpdateSeq;
-    private String updateSeq;
     private boolean dirty = false;
 
     FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager) {
@@ -78,7 +77,9 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             final boolean staleOk) throws IOException {
 
         final GroupingSearch groupingSearch = new GroupingSearch(groupBy);
-        groupingSearch.setGroupSort(groupSort);
+        if (groupSort != null) {
+            groupingSearch.setGroupSort(groupSort);
+        }
         groupingSearch.setCachingInMB(GROUP_CACHING_MB, true);
         groupingSearch.setAllGroups(false);
         groupingSearch.setGroupDocsLimit(defaultN(groupDocsLimit));
@@ -129,15 +130,14 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public String getUpdateSeq() {
-        if (updateSeq == null) {
-            final Map<String, String> commitData = getLiveCommitData();
-            if (commitData != null) {
-                updateSeq = commitData.get("update_seq");
-            } else {
-                updateSeq = "0";
+        final Map<String, String> commitData = getLiveCommitData();
+        if (commitData != null) {
+            final String updateSeq = commitData.get("update_seq");
+            if (updateSeq != null) {
+                return updateSeq;
             }
         }
-        return updateSeq;
+        return "0";
     }
 
     @Override
@@ -152,10 +152,9 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             try {
                 this.writer.setLiveCommitData(createLiveCommitData("update_seq", pendingUpdateSeq));
                 this.writer.commit();
-                this.updateSeq = this.pendingUpdateSeq;
                 this.pendingUpdateSeq = null;
                 this.dirty = false;
-                logger.info("committed at update sequence \"{}\".", updateSeq);
+                logger.info("committed at update sequence \"{}\".", pendingUpdateSeq);
             } catch (final IOException e) {
                 logger.catching(e);
                 throw e;

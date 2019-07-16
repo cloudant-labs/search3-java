@@ -119,6 +119,7 @@ public class SearchTest extends BaseFDBTest {
             final CollectingStreamObserver<SearchResponse> searchResponseCollector = new CollectingStreamObserver<SearchResponse>();
             search.search(searchRequest, searchResponseCollector);
 
+            assertNull(searchResponseCollector.lastThrowable);
             final SearchResponse searchResponse = searchResponseCollector.lastValue;
             assertEquals(1, searchResponse.getMatches());
             assertEquals("foobar", searchResponse.getHits(0).getId());
@@ -151,6 +152,7 @@ public class SearchTest extends BaseFDBTest {
                 search.groupSearch(groupSearchRequest, collector);
 
                 final GroupSearchResponse searchResponse = collector.lastValue;
+                assertNull(collector.lastThrowable);
                 assertEquals(1, searchResponse.getMatches());
                 assertEquals(1, searchResponse.getGroupMatches());
                 assertEquals(1, searchResponse.getGroupsCount());
@@ -174,7 +176,7 @@ public class SearchTest extends BaseFDBTest {
             {
                 final CollectingStreamObserver<UpdateSeq> collector = new CollectingStreamObserver<UpdateSeq>();
                 search.getUpdateSequence(index, collector);
-                assertNull(collector.lastValue);
+                assertEquals(UpdateSeq.newBuilder().setSeq("0").build(), collector.lastValue);
                 assertNull(collector.lastThrowable);
             }
 
