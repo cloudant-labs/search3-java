@@ -150,13 +150,14 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public void commit() throws IOException {
-        if (dirty && pendingUpdateSeq != null) {
+        final String committingSeq = pendingUpdateSeq;
+        if (dirty && committingSeq != null) {
             try {
-                this.writer.setLiveCommitData(createLiveCommitData("update_seq", pendingUpdateSeq));
+                this.writer.setLiveCommitData(createLiveCommitData("update_seq", committingSeq));
                 this.writer.commit();
                 this.pendingUpdateSeq = null;
                 this.dirty = false;
-                logger.info("committed at update sequence \"{}\".", pendingUpdateSeq);
+                logger.info("committed at update sequence \"{}\".", committingSeq);
             } catch (final IOException e) {
                 logger.catching(e);
                 throw e;
