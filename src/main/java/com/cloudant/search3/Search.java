@@ -181,29 +181,28 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     public void open(final OpenIndex request, final StreamObserver<Empty> responseObserver) {
         final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(request);
         final Subspace subspace = toSubspace(request.getIndex());
-        SearchHandler handler;
-        try {
-            handler = searchHandlerFactory.open(db, subspace, analyzer);
-            LOGGER.info("Opened index {}", handler);
-        } catch (final IOException e) {
-            responseObserver.onError(fromThrowable(e));
-            return;
-        }
-        final SearchHandler oldHandler = handlers.put(subspace, handler);
-        if (oldHandler != null) {
+
+        final SearchHandler handler = handlers.computeIfAbsent(subspace, key -> {
             try {
-                oldHandler.close();
+                final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
+                LOGGER.info("Opened index {}", result);
+                return result;
             } catch (final IOException e) {
-                LOGGER.warn("IOException when closing old handler", e);
+                LOGGER.catching(e);
+                responseObserver.onError(fromThrowable(e));
+                return null;
             }
+        });
+
+        if (handler != null) {
+            scheduler.scheduleWithFixedDelay(
+                    new CommitTask(subspace, handler),
+                    commitIntervalSecs,
+                    commitIntervalSecs,
+                    TimeUnit.SECONDS);
+            responseObserver.onNext(EMPTY);
+            responseObserver.onCompleted();
         }
-        scheduler.scheduleWithFixedDelay(
-                new CommitTask(subspace, handler),
-                commitIntervalSecs,
-                commitIntervalSecs,
-                TimeUnit.SECONDS);
-        responseObserver.onNext(EMPTY);
-        responseObserver.onCompleted();
     }
 
     @Override
