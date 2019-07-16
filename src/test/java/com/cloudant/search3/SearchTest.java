@@ -20,9 +20,13 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.io.File;
 import java.util.Arrays;
 import java.util.Collection;
 
+import org.apache.commons.configuration2.Configuration;
+import org.apache.commons.configuration2.builder.fluent.Configurations;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -36,6 +40,7 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
+import com.cloudant.search3.grpc.Search3.OpenIndex;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
@@ -74,21 +79,30 @@ public class SearchTest extends BaseFDBTest {
     @Parameters
     public static Collection<SearchHandlerFactory> factories() {
         return Arrays.asList(
-                new SearchHandlerFactory[] { FDBIndexWriterSearchHandler.factory(),
-                        FDBDirectorySearchHandler.factory() });
+                new SearchHandlerFactory[] { new FDBIndexWriterSearchHandlerFactory(),
+                        new FDBDirectorySearchHandlerFactory() });
     }
 
     private final SearchHandlerFactory factory;
+    private Configuration config;
 
     public SearchTest(final SearchHandlerFactory factory) {
         this.factory = factory;
     }
 
+    @Before
+    public void setup() throws Exception {
+        super.setup();
+        final Configurations configs = new Configurations();
+        this.config = configs.properties(new File("search3.ini"));
+    }
+
     @Test
     public void indexAndSearch() throws Exception {
-        try (final Search search = new Search(DB, factory)) {
-
+        try (final Search search = Search.create(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
+
+            open(search, index);
 
             // Index something.
             final CollectingStreamObserver<Empty> serviceResponseCollector = new CollectingStreamObserver<Empty>();
@@ -113,10 +127,10 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void indexAndGroupSearch() throws Exception {
-        try (final Search search = new Search(DB, factory)) {
+        try (final Search search = Search.create(config)) {
 
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
-
+            open(search, index);
             {
                 // Index something.
                 final CollectingStreamObserver<Empty> collector = new CollectingStreamObserver<Empty>();
@@ -154,9 +168,9 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void getSetUpdateSeq() throws Exception {
-        try (final Search search = new Search(DB, factory)) {
+        try (final Search search = Search.create(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
-
+            open(search, index);
             {
                 final CollectingStreamObserver<UpdateSeq> collector = new CollectingStreamObserver<UpdateSeq>();
                 search.getUpdateSequence(index, collector);
@@ -192,6 +206,15 @@ public class SearchTest extends BaseFDBTest {
 
     private FieldValue.Builder fieldValue(final String value) {
         return FieldValue.newBuilder().setString(value);
+    }
+
+    private void open(final Search search, final Index index) {
+        final OpenIndex openIndex = OpenIndex.newBuilder().setIndex(index).build();
+        final CollectingStreamObserver<Empty> collector = new CollectingStreamObserver<Empty>();
+        search.open(openIndex, collector);
+        assertNotNull(collector.lastValue);
+        assertNull(collector.lastThrowable);
+        assertTrue(collector.completed);
     }
 
 }
