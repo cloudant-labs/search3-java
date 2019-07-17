@@ -95,6 +95,7 @@ public class SearchTest extends BaseFDBTest {
         super.setup();
         final Configurations configs = new Configurations();
         this.config = configs.properties(new File("search3.ini"));
+        config.setProperty("handler_factory", factory.getClass().getCanonicalName());
     }
 
     @Test
