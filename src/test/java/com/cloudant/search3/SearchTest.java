@@ -96,6 +96,7 @@ public class SearchTest extends BaseFDBTest {
         final Configurations configs = new Configurations();
         this.config = configs.properties(new File("search3.ini"));
         config.setProperty("handler_factory", factory.getClass().getCanonicalName());
+        config.setProperty("commit_interval_secs", "1");
     }
 
     @Test
@@ -188,7 +189,7 @@ public class SearchTest extends BaseFDBTest {
             }
 
             // Wait for the commit :/.
-            Thread.sleep(5500);
+            Thread.sleep(1100);
 
             {
                 final CollectingStreamObserver<UpdateSeq> collector = new CollectingStreamObserver<UpdateSeq>();
