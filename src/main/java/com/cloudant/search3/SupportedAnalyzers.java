@@ -84,7 +84,7 @@ public final class SupportedAnalyzers {
         return new PerFieldAnalyzerWrapper(single(openIndex.getDefault()), perfield);
     }
 
-    private static Analyzer single(final AnalyzerSpec analyzerSpec) {
+    public static Analyzer single(final AnalyzerSpec analyzerSpec) {
         final CharArraySet stopwords;
         if (analyzerSpec.getStopwordsCount() == 0) {
             stopwords = null;

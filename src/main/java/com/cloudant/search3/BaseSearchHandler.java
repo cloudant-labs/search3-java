@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
@@ -45,6 +46,8 @@ import com.cloudant.search3.grpc.Search3.HitField;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 
 public abstract class BaseSearchHandler implements SearchHandler {
+
+    private static final Logger LOGGER = LogManager.getLogger();
 
     private static final Set<String> ID_SET = Collections.singleton("_id");
 

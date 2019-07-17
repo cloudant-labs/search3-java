@@ -19,6 +19,9 @@ service Search {
     // Write operations
     rpc UpdateDocument(DocumentUpdate) returns (google.protobuf.Empty);
     rpc DeleteDocument(DocumentDelete) returns (google.protobuf.Empty);
+
+    // Non-index operations
+    rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
 }
 
 message OpenIndex {
@@ -154,4 +157,13 @@ message DocumentUpdate {
 message DocumentDelete {
     Index index = 1;
     string id = 2;
+}
+
+message AnalyzeRequest {
+    AnalyzerSpec analyzer = 1;
+    string text = 2;
+}
+
+message AnalyzeResponse {
+    repeated string tokens = 1;
 }

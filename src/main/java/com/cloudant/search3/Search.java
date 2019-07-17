@@ -33,16 +33,21 @@ import org.apache.commons.jcs.utils.struct.LRUMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
+import org.apache.lucene.util.BytesRef;
 
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.FDB;
 import com.apple.foundationdb.subspace.Subspace;
+import com.cloudant.search3.grpc.Search3.AnalyzeRequest;
+import com.cloudant.search3.grpc.Search3.AnalyzeResponse;
 import com.cloudant.search3.grpc.Search3.DocumentDelete;
 import com.cloudant.search3.grpc.Search3.DocumentUpdate;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
@@ -336,6 +341,34 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(fromThrowable(e));
+        }
+    }
+
+    @Override
+    public void analyze(final AnalyzeRequest request, final StreamObserver<AnalyzeResponse> responseObserver) {
+        final Analyzer analyzer;
+        try {
+            analyzer = SupportedAnalyzers.single(request.getAnalyzer());
+        } catch (final IllegalArgumentException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(fromThrowable(e));
+            return;
+        }
+
+        try (final TokenStream stream = analyzer.tokenStream(null, request.getText())) {
+            stream.reset();
+            final TermToBytesRefAttribute termAttribute = stream.getAttribute(TermToBytesRefAttribute.class);
+            final AnalyzeResponse.Builder builder = AnalyzeResponse.newBuilder();
+            while (stream.incrementToken()) {
+                final BytesRef term = termAttribute.getBytesRef();
+                builder.addTokens(term.utf8ToString());
+            }
+            stream.end();
+            responseObserver.onNext(builder.build());
+            responseObserver.onCompleted();
+        } catch (final IOException e) {
             LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
         }
