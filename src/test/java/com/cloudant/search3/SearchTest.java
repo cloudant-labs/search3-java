@@ -17,7 +17,6 @@ package com.cloudant.search3;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -33,17 +32,15 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import com.cloudant.search3.grpc.Search3.DocumentField;
-import com.cloudant.search3.grpc.Search3.DocumentUpdate;
+import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.Group;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
-import com.cloudant.search3.grpc.Search3.OpenIndex;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
-import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Empty;
@@ -104,11 +101,10 @@ public class SearchTest extends BaseFDBTest {
         try (final Search search = Search.create(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
-            open(search, index);
-
             // Index something.
             final CollectingStreamObserver<Empty> serviceResponseCollector = new CollectingStreamObserver<Empty>();
-            final DocumentUpdate docUpdate = DocumentUpdate.newBuilder().setIndex(index).setId("foobar")
+            final DocumentUpdateRequest docUpdate = DocumentUpdateRequest.newBuilder().setIndex(index).setId("foobar")
+                    .setSeq(seq("1"))
                     .addFields(field("foo", "bar baz", true)).build();
             search.updateDocument(docUpdate, serviceResponseCollector);
             assertNotNull(serviceResponseCollector.lastValue);
@@ -133,11 +129,12 @@ public class SearchTest extends BaseFDBTest {
         try (final Search search = Search.create(config)) {
 
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
-            open(search, index);
             {
                 // Index something.
                 final CollectingStreamObserver<Empty> collector = new CollectingStreamObserver<Empty>();
-                final DocumentUpdate docUpdate = DocumentUpdate.newBuilder().setIndex(index).setId("foobar")
+                final DocumentUpdateRequest docUpdate = DocumentUpdateRequest.newBuilder().setIndex(index)
+                        .setId("foobar")
+                        .setSeq(seq("1"))
                         .addFields(field("foo", "bar baz", true)).addFields(field("category", "foobar", false)).build();
                 search.updateDocument(docUpdate, collector);
                 assertNotNull(collector.lastValue);
@@ -170,35 +167,6 @@ public class SearchTest extends BaseFDBTest {
         }
     }
 
-    @Test
-    public void getSetUpdateSeq() throws Exception {
-        try (final Search search = Search.create(config)) {
-            final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
-            open(search, index);
-            {
-                final CollectingStreamObserver<UpdateSeq> collector = new CollectingStreamObserver<UpdateSeq>();
-                search.getUpdateSequence(index, collector);
-                assertEquals(UpdateSeq.newBuilder().setSeq("0").build(), collector.lastValue);
-                assertNull(collector.lastThrowable);
-            }
-
-            {
-                final CollectingStreamObserver<Empty> collector = new CollectingStreamObserver<Empty>();
-                search.setUpdateSequence(SetUpdateSeq.newBuilder().setIndex(index).setSeq("foo").build(), collector);
-                assertSame(Empty.getDefaultInstance(), collector.lastValue);
-            }
-
-            // Wait for the commit :/.
-            Thread.sleep(1100);
-
-            {
-                final CollectingStreamObserver<UpdateSeq> collector = new CollectingStreamObserver<UpdateSeq>();
-                search.getUpdateSequence(index, collector);
-                assertEquals(UpdateSeq.newBuilder().setSeq("foo").build(), collector.lastValue);
-            }
-        }
-    }
-
     private DocumentField field(final String name, final String value, final boolean analyzed) {
         return DocumentField.newBuilder().setName(name).setValue(fieldValue(value)).setAnalyzed(analyzed)
                 .setStored(true).build();
@@ -212,13 +180,8 @@ public class SearchTest extends BaseFDBTest {
         return FieldValue.newBuilder().setString(value);
     }
 
-    private void open(final Search search, final Index index) {
-        final OpenIndex openIndex = OpenIndex.newBuilder().setIndex(index).build();
-        final CollectingStreamObserver<Empty> collector = new CollectingStreamObserver<Empty>();
-        search.open(openIndex, collector);
-        assertNotNull(collector.lastValue);
-        assertNull(collector.lastThrowable);
-        assertTrue(collector.completed);
+    private UpdateSeq seq(final String seq) {
+        return UpdateSeq.newBuilder().setSeq(seq).build();
     }
 
 }

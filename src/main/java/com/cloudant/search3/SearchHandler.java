@@ -15,45 +15,32 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
-import java.util.Set;
 
-import org.apache.lucene.document.Document;
-import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.Sort;
 
+import com.cloudant.search3.grpc.Search3.DocumentDeleteRequest;
+import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
+import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
+import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 public interface SearchHandler {
-
     void close() throws IOException;
 
     void commit() throws IOException;
 
-    void deleteDocument(UpdateSeq seq, Term term) throws IOException;
+    void deleteDocument(final DocumentDeleteRequest request) throws IOException;
 
-    GroupSearchResponse groupingSearch(
-            Query query,
-            String groupBy,
-            Sort groupSort,
-            int groupOffset,
-            int groupLimit,
-            int groupDocsLimit,
-            boolean staleOk) throws IOException;
+    UpdateSeq getUpdateSeq();
+
+    GroupSearchResponse groupSearch(GroupSearchRequest request) throws IOException, ParseException;
 
     InfoResponse info() throws IOException;
 
-    Query parse(final String queryString, final String partition) throws ParseException;
+    SearchResponse search(final SearchRequest request) throws IOException, ParseException;
 
-    SearchResponse search(ScoreDoc after, Query query, int n, Sort sort, Set<String> fieldsToLoad, boolean staleOk)
-            throws IOException;
-
-    String getUpdateSeq();
-
-    void updateDocument(UpdateSeq seq, Term term, Document doc) throws IOException;
+    void updateDocument(final DocumentUpdateRequest request) throws IOException;
 }

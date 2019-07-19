@@ -25,6 +25,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -35,7 +36,10 @@ import org.apache.lucene.search.grouping.GroupingSearch;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.BytesRef;
 
+import com.cloudant.search3.grpc.Search3.DocumentDeleteRequest;
+import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.Group;
+import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
@@ -70,14 +74,14 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public GroupSearchResponse groupingSearch(
-            final Query query,
-            final String groupBy,
-            final Sort groupSort,
-            final int groupOffset,
-            final int groupLimit,
-            final int groupDocsLimit,
-            final boolean staleOk) throws IOException {
+    public GroupSearchResponse groupSearch(final GroupSearchRequest request) throws IOException, ParseException {
+        final int limit = request.getLimit();
+        final boolean staleOk = request.getStale();
+        final String groupBy = request.getGroupBy();
+        final Sort groupSort = toSort(request);
+        final int groupOffset = request.getGroupOffset();
+        final int groupLimit = request.getGroupLimit();
+        final Query query = parse(request.getQuery(), "");
 
         final GroupingSearch groupingSearch = new GroupingSearch(groupBy);
         if (groupSort != null) {
@@ -85,7 +89,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         }
         groupingSearch.setCachingInMB(GROUP_CACHING_MB, true);
         groupingSearch.setAllGroups(false);
-        groupingSearch.setGroupDocsLimit(defaultN(groupDocsLimit));
+        groupingSearch.setGroupDocsLimit(defaultN(limit));
 
         return withSearcher(staleOk, searcher -> {
             final TopGroups<BytesRef> result = groupingSearch
@@ -120,29 +124,56 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void updateDocument(final UpdateSeq seq, final Term term, final Document doc) throws IOException {
-        this.writer.updateDocument(term, doc);
+    public void updateDocument(final DocumentUpdateRequest request) throws IOException {
+        final String id = request.getId();
+        if (id == null || id.isEmpty()) {
+            throw new IllegalArgumentException("doc id is missing.");
+        }
+
+        final UpdateSeq seq = request.getSeq();
+        if (seq == null || seq.getSeq() == null || seq.getSeq().isEmpty()) {
+            throw new IllegalArgumentException("seq is missing.");
+        }
+
+        final Document doc = toDoc(request);
+
+        this.writer.updateDocument(new Term("_id", id), doc);
         this.pendingUpdateSeq = seq;
         this.dirty = true;
     }
 
     @Override
-    public void deleteDocument(final UpdateSeq seq, final Term term) throws IOException {
-        this.writer.deleteDocuments(term);
+    public void deleteDocument(final DocumentDeleteRequest request) throws IOException {
+        final String id = request.getId();
+        if (id == null || id.isEmpty()) {
+            throw new IllegalArgumentException("doc id is missing.");
+        }
+
+        final UpdateSeq seq = request.getSeq();
+        if (seq == null || seq.getSeq() == null || seq.getSeq().isEmpty()) {
+            throw new IllegalArgumentException("seq is missing.");
+        }
+
+        this.writer.deleteDocuments(new Term("_id", id));
         this.pendingUpdateSeq = seq;
         this.dirty = true;
     }
 
     @Override
-    public String getUpdateSeq() {
+    public UpdateSeq getUpdateSeq() {
+        final String result;
         final Map<String, String> commitData = getLiveCommitData();
         if (commitData != null) {
             final String updateSeq = commitData.get("update_seq");
             if (updateSeq != null) {
-                return updateSeq;
+                result = updateSeq;
+            } else {
+                result = "0";
             }
+        } else {
+            result = "0";
         }
-        return "0";
+        return UpdateSeq.newBuilder().setSeq(result).build();
     }
 
     @Override
@@ -154,7 +185,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
                 this.writer.commit();
                 this.pendingUpdateSeq = null;
                 this.dirty = false;
-                logger.info("committed at update sequence \"{}\".", committingSeq);
+                logger.info("committed at update sequence \"{}\".", committingSeq.getSeq());
             } catch (final IOException e) {
                 logger.catching(e);
                 throw e;

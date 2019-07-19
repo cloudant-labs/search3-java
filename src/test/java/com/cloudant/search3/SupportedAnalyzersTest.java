@@ -24,7 +24,7 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.junit.Test;
 
 import com.cloudant.search3.grpc.Search3.AnalyzerSpec;
-import com.cloudant.search3.grpc.Search3.OpenIndex;
+import com.cloudant.search3.grpc.Search3.Index;
 
 public class SupportedAnalyzersTest {
 
@@ -44,10 +44,9 @@ public class SupportedAnalyzersTest {
     }
 
     private Analyzer single(final String name) {
-        final OpenIndex.Builder builder = OpenIndex.newBuilder();
+        final Index.Builder builder = Index.newBuilder();
         builder.setDefault(AnalyzerSpec.newBuilder().setName(name));
-        final OpenIndex openIndex = builder.build();
-        return SupportedAnalyzers.createAnalyzer(openIndex);
+        return SupportedAnalyzers.createAnalyzer(builder.build());
     }
 
 }

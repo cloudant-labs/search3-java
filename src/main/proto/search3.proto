@@ -15,8 +15,8 @@ service Search {
     rpc GroupSearch(GroupSearchRequest) returns (GroupSearchResponse);
 
     // Write operations
-    rpc UpdateDocument(DocumentUpdate) returns (google.protobuf.Empty);
-    rpc DeleteDocument(DocumentDelete) returns (google.protobuf.Empty);
+    rpc UpdateDocument(DocumentUpdateRequest) returns (google.protobuf.Empty);
+    rpc DeleteDocument(DocumentDeleteRequest) returns (google.protobuf.Empty);
 
     // Non-index operations
     rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
@@ -102,10 +102,6 @@ message Hit {
     repeated HitField fields = 3;
 }
 
-message Document {
-    repeated DocumentField fields = 1;
-}
-
 message DocumentField {
     string name = 1;
     FieldValue value = 2;
@@ -130,14 +126,14 @@ message FieldValue {
     }
 }
 
-message DocumentUpdate {
+message DocumentUpdateRequest {
     Index index = 1;
     string id = 2;
     UpdateSeq seq = 3;
     repeated DocumentField fields = 4;
 }
 
-message DocumentDelete {
+message DocumentDeleteRequest {
     Index index = 1;
     string id = 2;
     UpdateSeq seq = 3;

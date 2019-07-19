@@ -21,14 +21,15 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Sort;
 
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
 import com.apple.foundationdb.tuple.Tuple;
 import com.cloudant.fdblucene.FDBIndexReader;
 import com.cloudant.fdblucene.FDBIndexWriter;
+import com.cloudant.search3.grpc.Search3.DocumentDeleteRequest;
+import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
+import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
@@ -74,34 +75,40 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void deleteDocument(final UpdateSeq seq, final Term term) throws IOException {
-        logger.info("deleteDocument({})", term);
-        writer.deleteDocuments(term);
+    public void deleteDocument(final DocumentDeleteRequest request) throws IOException {
+        final String id = request.getId();
+        if (id == null || id.isEmpty()) {
+            throw new IllegalArgumentException("doc id is missing.");
+        }
+
+        final UpdateSeq seq = request.getSeq();
+        if (seq == null || seq.getSeq() == null || seq.getSeq().isEmpty()) {
+            throw new IllegalArgumentException("seq is missing.");
+        }
+
+        logger.info("deleteDocument({})", id);
+        writer.deleteDocuments(new Term("_id", id));
         this.pendingUpdateSeq = seq;
     }
 
     @Override
-    public String getUpdateSeq() {
+    public UpdateSeq getUpdateSeq() {
         return db.read(txn -> {
             return txn.get(updateSeqKey).thenApply(v -> {
+                final String result;
                 if (v == null) {
-                    return "0";
+                    result = "0";
+                } else {
+                    result = Tuple.fromBytes(v).getString(0);
                 }
-                return Tuple.fromBytes(v).getString(0);
+                return UpdateSeq.newBuilder().setSeq(result).build();
             });
         }).join();
     }
 
     @Override
-    public GroupSearchResponse groupingSearch(
-            final Query query,
-            final String groupBy,
-            final Sort groupSort,
-            final int groupOffset,
-            final int groupLimit,
-            final int groupDocsLimit,
-            final boolean staleOk) throws IOException {
-        throw new UnsupportedOperationException("groupingSearch not supported.");
+    public GroupSearchResponse groupSearch(final GroupSearchRequest request) throws IOException {
+        throw new UnsupportedOperationException("groupSearch not supported.");
     }
 
     @Override
@@ -110,9 +117,19 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void updateDocument(final UpdateSeq seq, final Term term, final Document doc) throws IOException {
-        logger.info("updateDocument({}, {})", term, doc);
-        writer.updateDocument(term, doc);
+    public void updateDocument(final DocumentUpdateRequest request) throws IOException {
+        final String id = request.getId();
+        if (id == null || id.isEmpty()) {
+            throw new IllegalArgumentException("doc id is missing.");
+        }
+
+        final UpdateSeq seq = request.getSeq();
+        if (seq == null || seq.getSeq() == null || seq.getSeq().isEmpty()) {
+            throw new IllegalArgumentException("seq is missing.");
+        }
+        final Document doc = toDoc(request);
+        logger.info("updateDocument({}, {})", id, doc);
+        writer.updateDocument(new Term("_id", id), doc);
         this.pendingUpdateSeq = seq;
     }
 

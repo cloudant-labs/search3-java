@@ -17,8 +17,11 @@ package com.cloudant.search3;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,17 +38,31 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.BytesRef;
 
+import com.cloudant.search3.grpc.Search3;
 import com.cloudant.search3.grpc.Search3.Bookmark;
+import com.cloudant.search3.grpc.Search3.DocumentField;
+import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.FieldValue;
+import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.HitField;
+import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 
 public abstract class BaseSearchHandler implements SearchHandler {
+
+    private static final SortField INVERSE_FIELD_SCORE = new SortField(null, SortField.Type.SCORE, true);
+    private static final SortField INVERSE_FIELD_DOC = new SortField(null, SortField.Type.DOC, true);
+
+    private static final Pattern SORT_FIELD_RE = Pattern.compile("^([-+])?([\\.\\w]+)(?:<(\\w+)>)?$");
+    private static final String FP = "([-+]?[0-9]+(?:\\.[0-9]+)?)";
+    private static final Pattern DISTANCE_RE = Pattern
+            .compile("^([-+])?<distance,([\\.\\w]+),([\\.\\w]+),%s,%s,(mi|km)>$".format(FP, FP));
 
     private static final Logger LOGGER = LogManager.getLogger();
 
@@ -79,8 +96,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
         };
     }
 
-    @Override
-    public final Query parse(final String queryString, final String partition) throws ParseException {
+    protected final Query parse(final String queryString, final String partition) throws ParseException {
         final Query baseQuery = queryParser.get().parse(queryString);
         if (partition.length() > 0) {
             final BooleanQuery.Builder builder = new BooleanQuery.Builder();
@@ -93,19 +109,20 @@ public abstract class BaseSearchHandler implements SearchHandler {
     }
 
     @Override
-    public final SearchResponse search(
-            final ScoreDoc after,
-            final Query query,
-            final int n,
-            final Sort sort,
-            final Set<String> fieldsToLoad,
-            final boolean staleOk) throws IOException {
+    public final SearchResponse search(final SearchRequest request) throws IOException, ParseException {
+        final int limit = request.getLimit();
+        final Set<String> fieldsToLoad = toFieldSet(request);
+        final boolean staleOk = request.getStale();
+        final Sort sort = toSort(request);
+        final ScoreDoc after = toAfter(request, sort);
+        final Query query = parse(request.getQuery(), request.getPartition());
+
         return withSearcher(staleOk, searcher -> {
             final TopDocs topDocs;
             if (sort == null) {
-                topDocs = searcher.searchAfter(after, query, defaultN(n));
+                topDocs = searcher.searchAfter(after, query, defaultN(limit));
             } else {
-                topDocs = searcher.searchAfter(after, query, defaultN(n), sort);
+                topDocs = searcher.searchAfter(after, query, defaultN(limit), sort);
             }
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
             responseBuilder.setMatches(topDocs.totalHits.value);
@@ -185,4 +202,142 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
     protected abstract <T> T withSearcher(final boolean staleOk, final IOFunction<IndexSearcher, T> f)
             throws IOException;
+
+    protected static Set<String> toFieldSet(final SearchRequest request) {
+        return new HashSet<String>(request.getIncludeFieldsList());
+    }
+
+    protected static Sort toSort(final SearchRequest request) throws ParseException {
+        return toSort(request.getSort());
+    }
+
+    protected static Sort toSort(final GroupSearchRequest request) throws ParseException {
+        return toSort(request.getGroupSort());
+    }
+
+    protected static Sort toSort(final Search3.Sort sort) throws ParseException {
+        if (sort.getFieldsCount() == 0) {
+            return null;
+        }
+
+        final SortField[] sortFields = new SortField[sort.getFieldsCount()];
+        for (int i = 0; i < sort.getFieldsCount(); i++) {
+            switch (sort.getFields(i)) {
+            case "<score>":
+                sortFields[i] = INVERSE_FIELD_SCORE;
+                continue;
+            case "-<score>":
+                sortFields[i] = SortField.FIELD_SCORE;
+                continue;
+            case "<doc>":
+                sortFields[i] = SortField.FIELD_DOC;
+                continue;
+            case "-<doc>":
+                sortFields[i] = INVERSE_FIELD_DOC;
+                continue;
+            }
+
+            Matcher m = DISTANCE_RE.matcher(sort.getFields(i));
+            if (m.matches()) {
+                throw new ParseException("sort by distance not yet supported.");
+            }
+
+            m = SORT_FIELD_RE.matcher(sort.getFields(i));
+            if (m.matches()) {
+                final String fieldTypeStr = m.group(3) == null ? "number" : m.group(3);
+                final SortField.Type fieldType;
+                switch (fieldTypeStr) {
+                case "string":
+                    fieldType = SortField.Type.STRING;
+                    break;
+                case "number":
+                    fieldType = SortField.Type.DOUBLE;
+                    break;
+                default:
+                    throw new ParseException("Unrecognized type: " + m.group(3));
+                }
+                final boolean reverse = "-".equals(m.group(1));
+
+                sortFields[i] = new SortField(m.group(2), fieldType, reverse);
+            }
+        }
+        return new Sort(sortFields);
+    }
+
+    protected static ScoreDoc toAfter(final SearchRequest request, final Sort sort) {
+        if (!request.hasBookmark()) {
+            return null;
+        }
+
+        final Bookmark bookmark = request.getBookmark();
+
+        // Default sort order (by relevance).
+        if (sort == null) {
+            final float score = bookmark.getOrder(0).getFloat();
+            final int doc = bookmark.getOrder(1).getInt();
+            return new ScoreDoc(doc, score);
+        }
+
+        // Custom sort order.
+        final Object[] fields = new Object[bookmark.getOrderCount() - 1];
+        for (int i = 0; i < fields.length; i++) {
+            final FieldValue value = bookmark.getOrder(i);
+            switch (value.getValueCase()) {
+            case BOOL:
+                fields[i] = value.getBool();
+                break;
+            case DOUBLE:
+                fields[i] = value.getDouble();
+                break;
+            case FLOAT:
+                fields[i] = value.getFloat();
+                break;
+            case INT:
+                fields[i] = value.getInt();
+                break;
+            case LONG:
+                fields[i] = value.getLong();
+                break;
+            case STRING:
+                fields[i] = new BytesRef(value.getString());
+                break;
+            default:
+                throw new IllegalArgumentException(value + " is malformed in bookmark");
+            }
+        }
+        final int doc = bookmark.getOrder(bookmark.getOrderCount() - 1).getInt();
+        return new FieldDoc(doc, Float.NaN, fields);
+    }
+
+    protected static Document toDoc(final DocumentUpdateRequest request) throws IOException {
+        final DocumentBuilder builder = new DocumentBuilder();
+        builder.addString("_id", request.getId(), true);
+
+        for (final DocumentField field : request.getFieldsList()) {
+            final String name = field.getName();
+            final FieldValue value = field.getValue();
+            final boolean analyzed = field.getAnalyzed();
+            final boolean stored = field.getStored();
+            final boolean facet = field.getFacet();
+
+            switch (value.getValueCase()) {
+            case BOOL:
+                builder.addBoolean(name, value.getBool(), stored);
+                break;
+            case DOUBLE:
+                builder.addDouble(name, value.getDouble(), stored);
+                break;
+            case STRING:
+                if (analyzed) {
+                    builder.addText(name, value.getString(), stored, facet);
+                } else {
+                    builder.addString(name, value.getString(), stored);
+                }
+                break;
+            default:
+                throw new IOException(name + " has no value.");
+            }
+        }
+        return builder.build();
+    }
 }
