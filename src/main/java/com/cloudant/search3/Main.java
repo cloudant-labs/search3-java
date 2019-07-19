@@ -15,6 +15,7 @@
 package com.cloudant.search3;
 
 import java.io.File;
+import java.sql.Timestamp;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.builder.fluent.Configurations;
@@ -39,17 +40,17 @@ public class Main {
         LOGGER = LogManager.getLogger();
 
         final int port = config.getInt("listen.port");
-        final File certChainFile = new File(config.getString("tls.cert_file"));
+        // final File certChainFile = new File(config.getString("tls.cert_file"));
         // Key needs to be in PKCS8 format for Netty for some bizarre reason.
-        final File privateKeyFile = new File(config.getString("tls.key_file"));
-        final File clientCAFile = new File(config.getString("tls.ca_file"));
+        // final File privateKeyFile = new File(config.getString("tls.key_file"));
+        // final File clientCAFile = new File(config.getString("tls.ca_file"));
 
         final Search foo = Search.create(config);
 
-        final SslContext sslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
-                .trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
+        // final SslContext sslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
+        //         .trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
 
-        final Server server = NettyServerBuilder.forPort(port).addService(foo).sslContext(sslContext).build();
+        final Server server = NettyServerBuilder.forPort(port).addService(foo).build();
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
@@ -57,9 +58,10 @@ public class Main {
                 server.shutdown();
             }
         });
-
+        Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+        System.out.println("Version 5");
         server.start();
-        LOGGER.info("Server started.");
+        LOGGER.info("Server started. ");
         server.awaitTermination();
         LOGGER.info("Server terminated.");
     }
