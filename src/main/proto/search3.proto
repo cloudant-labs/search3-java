@@ -6,11 +6,9 @@ import "google/protobuf/empty.proto";
 
 service Search {
     // Index operations
-    rpc Open(OpenIndex) returns (google.protobuf.Empty);
     rpc Delete(Index) returns (google.protobuf.Empty);
     rpc GetUpdateSequence(Index) returns (UpdateSeq);
     rpc Info(Index) returns (InfoResponse);
-    rpc SetUpdateSequence(SetUpdateSeq) returns (google.protobuf.Empty);
 
     // Read operations
     rpc Search(SearchRequest) returns (SearchResponse);
@@ -24,9 +22,9 @@ service Search {
     rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
 }
 
-message OpenIndex {
-	Index index = 1;
-	AnalyzerSpec default = 2;
+message Index {
+    bytes prefix = 1;
+    AnalyzerSpec default = 2;
 	map<string, AnalyzerSpec> per_field = 3;
 }
 
@@ -37,16 +35,6 @@ message AnalyzerSpec {
 
 message UpdateSeq {
     string seq = 1;
-}
-
-message SetUpdateSeq {
-    Index index = 1;
-    string seq = 2;
-}
-
-// Uniquely identifies a search index.
-message Index {
-    bytes prefix = 1;
 }
 
 message InfoResponse {
@@ -115,8 +103,7 @@ message Hit {
 }
 
 message Document {
-    string index = 1;
-    repeated DocumentField fields = 2;
+    repeated DocumentField fields = 1;
 }
 
 message DocumentField {
@@ -143,20 +130,17 @@ message FieldValue {
     }
 }
 
-message SearchTerm {
-    string field = 1;
-    string value = 2;
-}
-
 message DocumentUpdate {
     Index index = 1;
     string id = 2;
+    UpdateSeq seq = 3;
     repeated DocumentField fields = 4;
 }
 
 message DocumentDelete {
     Index index = 1;
     string id = 2;
+    UpdateSeq seq = 3;
 }
 
 message AnalyzeRequest {

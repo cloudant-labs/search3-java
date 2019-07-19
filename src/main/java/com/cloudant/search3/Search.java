@@ -54,10 +54,8 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
-import com.cloudant.search3.grpc.Search3.OpenIndex;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
-import com.cloudant.search3.grpc.Search3.SetUpdateSeq;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.cloudant.search3.grpc.SearchGrpc;
 import com.google.protobuf.ByteString;
@@ -152,7 +150,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void getUpdateSequence(final Index request, final StreamObserver<UpdateSeq> responseObserver) {
         try {
-            final SearchHandler handler = openExisting(request);
+            final SearchHandler handler = getOrOpen(request);
             final String result = handler.getUpdateSeq();
             final UpdateSeq updateSeq = UpdateSeq.newBuilder().setSeq(result).build();
             responseObserver.onNext(updateSeq);
@@ -163,50 +161,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         } catch (final RuntimeException e) {
             LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
-        }
-    }
-
-    @Override
-    public void setUpdateSequence(final SetUpdateSeq request, final StreamObserver<Empty> responseObserver) {
-        try {
-            final SearchHandler handler = openExisting(request.getIndex());
-            handler.setPendingUpdateSeq(request.getSeq());
-            responseObserver.onNext(EMPTY);
-            responseObserver.onCompleted();
-        } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final RuntimeException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        }
-    }
-
-    @Override
-    public void open(final OpenIndex request, final StreamObserver<Empty> responseObserver) {
-        final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(request);
-        final Subspace subspace = toSubspace(request.getIndex());
-
-        final SearchHandler handler = handlers.computeIfAbsent(subspace, key -> {
-            try {
-                final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
-                LOGGER.info("Opened index {}", result);
-                return result;
-            } catch (final IOException e) {
-                LOGGER.catching(e);
-                responseObserver.onError(fromThrowable(e));
-                return null;
-            }
-        });
-
-        if (handler != null) {
-            scheduler.scheduleWithFixedDelay(
-                    new CommitTask(subspace, handler),
-                    commitIntervalSecs,
-                    commitIntervalSecs,
-                    TimeUnit.SECONDS);
-            responseObserver.onNext(EMPTY);
-            responseObserver.onCompleted();
         }
     }
 
@@ -235,7 +189,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void info(final Index request, final StreamObserver<InfoResponse> responseObserver) {
         try {
-            final SearchHandler handler = openExisting(request);
+            final SearchHandler handler = getOrOpen(request);
             responseObserver.onNext(handler.info());
             responseObserver.onCompleted();
         } catch (final IOException e) {
@@ -256,7 +210,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final Sort sort = toSort(request);
             final ScoreDoc after = toAfter(request, sort);
 
-            final SearchHandler handler = openExisting(request.getIndex());
+            final SearchHandler handler = getOrOpen(request.getIndex());
             final Query query = handler.parse(request.getQuery(), request.getPartition());
             final SearchResponse response = handler.search(after, query, limit, sort, fieldsToLoad, staleOk);
             responseObserver.onNext(response);
@@ -285,7 +239,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final int groupOffset = request.getGroupOffset();
             final int groupLimit = request.getGroupLimit();
 
-            final SearchHandler handler = openExisting(request.getIndex());
+            final SearchHandler handler = getOrOpen(request.getIndex());
             final Query query = handler.parse(request.getQuery(), "");
             final GroupSearchResponse response = handler
                     .groupingSearch(query, groupBy, groupSort, groupOffset, groupLimit, limit, staleOk);
@@ -306,14 +260,14 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void updateDocument(final DocumentUpdate request, final StreamObserver<Empty> responseObserver) {
         try {
-            final SearchHandler handler = openExisting(request.getIndex());
+            final SearchHandler handler = getOrOpen(request.getIndex());
             final String id = request.getId();
             if (id == null || id.isEmpty()) {
                 throw new IOException("doc id is missing.");
             }
             final Term idTerm = new Term("_id", id);
             final Document doc = toDoc(request);
-            handler.updateDocument(idTerm, doc);
+            handler.updateDocument(request.getSeq(), idTerm, doc);
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
@@ -328,13 +282,13 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void deleteDocument(final DocumentDelete request, final StreamObserver<Empty> responseObserver) {
         try {
-            final SearchHandler handler = openExisting(request.getIndex());
+            final SearchHandler handler = getOrOpen(request.getIndex());
             final String id = request.getId();
             if (id == null || id.isEmpty()) {
                 throw new IOException("doc id is missing.");
             }
             final Term idTerm = new Term("_id", id);
-            handler.deleteDocument(idTerm);
+            handler.deleteDocument(request.getSeq(), idTerm);
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
@@ -392,13 +346,27 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         handlers.clear();
     }
 
-    private SearchHandler openExisting(final Index index) throws IOException {
-        final Subspace indexSubspace = toSubspace(index);
-        final SearchHandler result = handlers.get(indexSubspace);
-        if (result == null) {
-            throw new IllegalStateException("index not opened");
-        }
-        return result;
+    private SearchHandler getOrOpen(final Index index) throws IOException {
+        final Subspace subspace = toSubspace(index);
+        final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(index);
+
+        final SearchHandler handler = handlers.computeIfAbsent(subspace, key -> {
+            try {
+                final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
+                scheduler.scheduleWithFixedDelay(
+                        new CommitTask(subspace, result),
+                        commitIntervalSecs,
+                        commitIntervalSecs,
+                        TimeUnit.SECONDS);
+                LOGGER.info("Opened index {}", result);
+                return result;
+            } catch (final IOException e) {
+                LOGGER.catching(e);
+                return null;
+            }
+        });
+
+        return handler;
     }
 
     private SearchHandler remove(final Index index) {

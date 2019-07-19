@@ -39,6 +39,7 @@ import com.cloudant.search3.grpc.Search3.Group;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
+import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 /**
  * Provides all services for a specific index using an FDBDirectory; should be
@@ -51,7 +52,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private final String toString;
     private final IndexWriter writer;
     private final SearcherManager manager;
-    private String pendingUpdateSeq;
+    private UpdateSeq pendingUpdateSeq;
     private boolean dirty = false;
 
     FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager, final Analyzer analyzer) {
@@ -119,14 +120,16 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void updateDocument(final Term term, final Document doc) throws IOException {
+    public void updateDocument(final UpdateSeq seq, final Term term, final Document doc) throws IOException {
         this.writer.updateDocument(term, doc);
+        this.pendingUpdateSeq = seq;
         this.dirty = true;
     }
 
     @Override
-    public void deleteDocument(final Term term) throws IOException {
+    public void deleteDocument(final UpdateSeq seq, final Term term) throws IOException {
         this.writer.deleteDocuments(term);
+        this.pendingUpdateSeq = seq;
         this.dirty = true;
     }
 
@@ -143,17 +146,11 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void setPendingUpdateSeq(final String pendingUpdateSeq) {
-        this.pendingUpdateSeq = pendingUpdateSeq;
-        this.dirty = true;
-    }
-
-    @Override
     public void commit() throws IOException {
-        final String committingSeq = pendingUpdateSeq;
+        final UpdateSeq committingSeq = pendingUpdateSeq;
         if (dirty && committingSeq != null) {
             try {
-                this.writer.setLiveCommitData(createLiveCommitData("update_seq", committingSeq));
+                this.writer.setLiveCommitData(createLiveCommitData("update_seq", committingSeq.getSeq()));
                 this.writer.commit();
                 this.pendingUpdateSeq = null;
                 this.dirty = false;

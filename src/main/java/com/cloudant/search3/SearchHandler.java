@@ -27,6 +27,7 @@ import org.apache.lucene.search.Sort;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
+import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 public interface SearchHandler {
 
@@ -34,7 +35,7 @@ public interface SearchHandler {
 
     void commit() throws IOException;
 
-    void deleteDocument(Term term) throws IOException;
+    void deleteDocument(UpdateSeq seq, Term term) throws IOException;
 
     GroupSearchResponse groupingSearch(
             Query query,
@@ -54,7 +55,5 @@ public interface SearchHandler {
 
     String getUpdateSeq();
 
-    void setPendingUpdateSeq(String pendingUpdateSeq);
-
-    void updateDocument(Term term, Document doc) throws IOException;
+    void updateDocument(UpdateSeq seq, Term term, Document doc) throws IOException;
 }

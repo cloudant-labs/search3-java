@@ -63,25 +63,25 @@ import org.apache.lucene.analysis.th.ThaiAnalyzer;
 import org.apache.lucene.analysis.tr.TurkishAnalyzer;
 
 import com.cloudant.search3.grpc.Search3.AnalyzerSpec;
-import com.cloudant.search3.grpc.Search3.OpenIndex;
+import com.cloudant.search3.grpc.Search3.Index;
 
 public final class SupportedAnalyzers {
 
     private SupportedAnalyzers() {
     }
 
-    public static Analyzer createAnalyzer(final OpenIndex openIndex) {
-        if (openIndex.getPerFieldCount() == 0) {
-            if (openIndex.hasDefault()) {
-                return single(openIndex.getDefault());
+    public static Analyzer createAnalyzer(final Index index) {
+        if (index.getPerFieldCount() == 0) {
+            if (index.hasDefault()) {
+                return single(index.getDefault());
             } else {
                 return new StandardAnalyzer();
             }
         }
 
-        final Map<String, Analyzer> perfield = openIndex.getPerFieldMap().entrySet().stream()
+        final Map<String, Analyzer> perfield = index.getPerFieldMap().entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> single(e.getValue())));
-        return new PerFieldAnalyzerWrapper(single(openIndex.getDefault()), perfield);
+        return new PerFieldAnalyzerWrapper(single(index.getDefault()), perfield);
     }
 
     public static Analyzer single(final AnalyzerSpec analyzerSpec) {

@@ -31,6 +31,7 @@ import com.cloudant.fdblucene.FDBIndexReader;
 import com.cloudant.fdblucene.FDBIndexWriter;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
+import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
 
@@ -40,7 +41,7 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     private final FDBIndexWriter writer;
     private final FDBIndexReader reader;
     private final IndexSearcher searcher;
-    private String pendingUpdateSeq;
+    private UpdateSeq pendingUpdateSeq;
 
     FDBIndexWriterSearchHandler(final Database db, final Subspace index, final Analyzer analyzer) {
         super(analyzer);
@@ -73,9 +74,10 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void deleteDocument(final Term term) throws IOException {
+    public void deleteDocument(final UpdateSeq seq, final Term term) throws IOException {
         logger.info("deleteDocument({})", term);
         writer.deleteDocuments(term);
+        this.pendingUpdateSeq = seq;
     }
 
     @Override
@@ -108,14 +110,10 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void setPendingUpdateSeq(final String pendingUpdateSeq) {
-        this.pendingUpdateSeq = pendingUpdateSeq;
-    }
-
-    @Override
-    public void updateDocument(final Term term, final Document doc) throws IOException {
+    public void updateDocument(final UpdateSeq seq, final Term term, final Document doc) throws IOException {
         logger.info("updateDocument({}, {})", term, doc);
         writer.updateDocument(term, doc);
+        this.pendingUpdateSeq = seq;
     }
 
     @Override
