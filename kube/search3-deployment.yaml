@@ -1,0 +1,47 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: search3
+  labels:
+    k8s-app: search3
+  namespace: default
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        k8s-app: search3
+    spec:
+      containers:
+      - name: search3
+        image: 192.168.99.101:80/search3_image2:latest
+        volumeMounts:
+          - name: etc-foundationdb
+            mountPath: /etc/foundationdb
+        ports:
+        - containerPort: 8443
+          name: grpc
+        command: ["/bin/sh", "-ec", "sleep 1200"]
+      initContainers:
+      - name: configurator
+        image: "ellerbrock/alpine-bash-curl-ssl"
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+          - name: etc-foundationdb
+            mountPath: /tmp
+          - name: curlrc
+            mountPath: /home/download/.curlrc
+            subPath: ".curlrc"
+            readOnly: true
+        command:
+          - "/bin/bash"
+          - "-c"
+          - |
+            set -ex
+            curl -K /home/download/.curlrc http://thoth.fdb.svc.cluster.local/fdb_cluster_config/test-fdb-local-001 -o /tmp/fdb.cluster || exit 1
+      volumes:
+        - name: etc-foundationdb
+          emptyDir: {}
+        - name: curlrc
+          secret:
+            secretName: curlrc

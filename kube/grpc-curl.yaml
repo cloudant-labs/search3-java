@@ -1,0 +1,21 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: grpccurl-service
+  labels:
+    k8s-app: grpccurl-service
+  namespace: default
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        k8s-app: grpccurl-service
+    spec:
+      containers:
+      - name: grpccurl-service
+        image: networld/grpcurl
+        ports:
+        - containerPort: 56651
+          name: grpc
+        command: ["/bin/sh", "-ec", "sleep 1200"]
