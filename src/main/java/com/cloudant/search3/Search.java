@@ -142,7 +142,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 txn.clear(subspace.range());
                 return null;
             });
-            final SearchHandler handler = remove(request);
+            final SearchHandler handler = handlers.remove(subspace);
             if (handler != null) {
                 handler.close();
             }
@@ -312,10 +312,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         });
 
         return handler;
-    }
-
-    private SearchHandler remove(final Index index) {
-        return handlers.remove(toSubspace(index));
     }
 
     private Subspace toSubspace(final Index index) {
