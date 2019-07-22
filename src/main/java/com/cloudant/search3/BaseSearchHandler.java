@@ -335,7 +335,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 }
                 break;
             default:
-                throw new IOException(name + " has no value.");
+                throw new IllegalArgumentException(name + " has no value.");
             }
         }
         return builder.build();
