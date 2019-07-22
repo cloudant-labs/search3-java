@@ -72,8 +72,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             try {
                 handler.commit();
             } catch (final IOException e) {
-                LOGGER.warn("Closing failed handler for " + index, e);
-                handlers.remove(index);
+                failedHandler(index, e);
                 throw new RuntimeException(e);
             }
         }
@@ -137,14 +136,16 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     @Override
     public void delete(final Index request, final StreamObserver<Empty> responseObserver) {
+        final Subspace subspace = toSubspace(request);
         try {
-            final SearchHandler handler = remove(request);
-            final Subspace subspace = toSubspace(request);
-            handler.close();
             db.run(txn -> {
                 txn.clear(subspace.range());
                 return null;
             });
+            final SearchHandler handler = remove(request);
+            if (handler != null) {
+                handler.close();
+            }
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
             LOGGER.info("Deleted index {}.", subspace);
@@ -164,7 +165,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(handler.info());
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
+            failedHandler(request, e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
             LOGGER.catching(e);
@@ -180,7 +181,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
+            failedHandler(request.getIndex(), e);
             responseObserver.onError(fromThrowable(e));
         } catch (final ParseException e) {
             LOGGER.catching(e);
@@ -201,7 +202,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
+            failedHandler(request.getIndex(), e);
             responseObserver.onError(fromThrowable(e));
         } catch (final ParseException e) {
             LOGGER.catching(e);
@@ -220,7 +221,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
+            failedHandler(request.getIndex(), e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
             LOGGER.catching(e);
@@ -236,7 +237,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
         } catch (final IOException e) {
-            LOGGER.catching(e);
+            failedHandler(request.getIndex(), e);
             responseObserver.onError(fromThrowable(e));
         } catch (final RuntimeException e) {
             LOGGER.catching(e);
@@ -290,7 +291,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         handlers.clear();
     }
 
-    private SearchHandler getOrOpen(final Index index) throws IOException {
+    private SearchHandler getOrOpen(final Index index) {
         final Subspace subspace = toSubspace(index);
         final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(index);
 
@@ -339,6 +340,23 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             status = Status.fromThrowable(t);
         }
         return status.withDescription(t.getMessage()).asException();
+    }
+
+    private void failedHandler(final Index index, final Exception e) {
+        failedHandler(toSubspace(index), e);
+    }
+
+    private void failedHandler(final Subspace index, final Exception e) {
+        final SearchHandler handler = handlers.remove(index);
+        try {
+            if (handler != null) {
+                handler.close();
+            }
+            LOGGER.warn("Closed failed handler for index {}.", index);
+        } catch (final IOException e1) {
+            LOGGER.warn("Ignoring exception thrown while closing failed handler", e1);
+        }
+
     }
 
 }
