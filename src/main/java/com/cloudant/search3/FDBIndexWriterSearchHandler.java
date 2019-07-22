@@ -15,6 +15,7 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
+import java.util.concurrent.CompletionException;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.lucene.analysis.Analyzer;
@@ -92,28 +93,44 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public UpdateSeq getUpdateSeq() {
-        return db.read(txn -> {
-            return txn.get(updateSeqKey).thenApply(v -> {
-                final String result;
-                if (v == null) {
-                    result = "0";
-                } else {
-                    result = Tuple.fromBytes(v).getString(0);
-                }
-                return UpdateSeq.newBuilder().setSeq(result).build();
-            });
-        }).join();
-    }
-
-    @Override
     public GroupSearchResponse groupSearch(final GroupSearchRequest request) throws IOException {
         throw new UnsupportedOperationException("groupSearch not supported.");
     }
 
     @Override
     public InfoResponse info() throws IOException {
-        return null;
+        final InfoResponse.Builder builder = InfoResponse.newBuilder();
+        builder.setPurgeSeq("0");
+
+        try {
+        db.run(txn -> {
+            final byte[] seqValue = txn.get(updateSeqKey).join();
+            if (seqValue == null) {
+                builder.setCommittedSeq("0");
+            } else {
+                builder.setCommittedSeq(Tuple.fromBytes(seqValue).getString(0));
+            }
+
+            try {
+                reader.run(txn, () -> {
+                    builder.setDocCount(reader.numDocs());
+                    builder.setDocDelCount(reader.numDeletedDocs());
+                    return null;
+                });
+            } catch (final IOException e) {
+                throw new CompletionException(e);
+            }
+            return null;
+            });
+        } catch (final CompletionException e) {
+            final Throwable cause = e.getCause();
+            if (cause instanceof IOException) {
+                throw (IOException) cause;
+            }
+            throw e;
+        }
+
+        return builder.build();
     }
 
     @Override

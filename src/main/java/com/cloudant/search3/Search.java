@@ -45,7 +45,6 @@ import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
-import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.cloudant.search3.grpc.SearchGrpc;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Empty;
@@ -134,21 +133,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         this.scheduler = scheduler;
         this.handlers = handlers;
         this.commitIntervalSecs = commitIntervalSecs;
-    }
-
-    @Override
-    public void getUpdateSequence(final Index request, final StreamObserver<UpdateSeq> responseObserver) {
-        try {
-            final SearchHandler handler = getOrOpen(request);
-            responseObserver.onNext(handler.getUpdateSeq());
-            responseObserver.onCompleted();
-        } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final RuntimeException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        }
     }
 
     @Override

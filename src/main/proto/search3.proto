@@ -7,7 +7,6 @@ import "google/protobuf/empty.proto";
 service Search {
     // Index operations
     rpc Delete(Index) returns (google.protobuf.Empty);
-    rpc GetUpdateSequence(Index) returns (UpdateSeq);
     rpc Info(Index) returns (InfoResponse);
 
     // Read operations
@@ -38,11 +37,10 @@ message UpdateSeq {
 }
 
 message InfoResponse {
-    uint64 size = 1;
-    uint32 doc_count = 2;
-    uint32 doc_del_count = 3;
-    string committed_seq = 5;
-    string purge_seq = 6;
+    uint32 doc_count = 1;
+    uint32 doc_del_count = 2;
+    string committed_seq = 3;
+    string purge_seq = 4;
 }
 
 message Sort {
@@ -130,13 +128,15 @@ message DocumentUpdateRequest {
     Index index = 1;
     string id = 2;
     UpdateSeq seq = 3;
-    repeated DocumentField fields = 4;
+    UpdateSeq purge_seq = 4;
+    repeated DocumentField fields = 5;
 }
 
 message DocumentDeleteRequest {
     Index index = 1;
     string id = 2;
     UpdateSeq seq = 3;
+    UpdateSeq purge_seq = 4;
 }
 
 message AnalyzeRequest {

@@ -15,7 +15,6 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -57,6 +56,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private final IndexWriter writer;
     private final SearcherManager manager;
     private UpdateSeq pendingUpdateSeq;
+    private UpdateSeq pendingPurgeSeq;
     private boolean dirty = false;
 
     FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager, final Analyzer analyzer) {
@@ -120,7 +120,18 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public InfoResponse info() throws IOException {
-        return null;
+        final InfoResponse.Builder builder = InfoResponse.newBuilder();
+        withSearcher(false, searcher -> {
+            builder.setDocCount(searcher.getIndexReader().numDocs());
+            builder.setDocDelCount(searcher.getIndexReader().numDeletedDocs());
+            return null;
+        });
+
+        final Map<String, String> commitData = getLiveCommitData();
+        builder.setCommittedSeq(commitData.get("update_seq"));
+        builder.setPurgeSeq(commitData.get("purge_seq"));
+
+        return builder.build();
     }
 
     @Override
@@ -130,15 +141,15 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             throw new IllegalArgumentException("doc id is missing.");
         }
 
-        final UpdateSeq seq = request.getSeq();
-        if (seq == null || seq.getSeq() == null || seq.getSeq().isEmpty()) {
-            throw new IllegalArgumentException("seq is missing.");
-        }
-
         final Document doc = toDoc(request);
 
         this.writer.updateDocument(new Term("_id", id), doc);
-        this.pendingUpdateSeq = seq;
+        if (request.hasSeq()) {
+            this.pendingUpdateSeq = request.getSeq();
+        }
+        if (request.hasPurgeSeq()) {
+            this.pendingPurgeSeq = request.getPurgeSeq();
+        }
         this.dirty = true;
     }
 
@@ -149,43 +160,35 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             throw new IllegalArgumentException("doc id is missing.");
         }
 
-        final UpdateSeq seq = request.getSeq();
-        if (seq == null || seq.getSeq() == null || seq.getSeq().isEmpty()) {
-            throw new IllegalArgumentException("seq is missing.");
-        }
-
         this.writer.deleteDocuments(new Term("_id", id));
-        this.pendingUpdateSeq = seq;
-        this.dirty = true;
-    }
-
-    @Override
-    public UpdateSeq getUpdateSeq() {
-        final String result;
-        final Map<String, String> commitData = getLiveCommitData();
-        if (commitData != null) {
-            final String updateSeq = commitData.get("update_seq");
-            if (updateSeq != null) {
-                result = updateSeq;
-            } else {
-                result = "0";
-            }
-        } else {
-            result = "0";
+        if (request.hasSeq()) {
+            this.pendingUpdateSeq = request.getSeq();
         }
-        return UpdateSeq.newBuilder().setSeq(result).build();
-    }
+        if (request.hasPurgeSeq()) {
+            this.pendingPurgeSeq = request.getPurgeSeq();
+        }
+        this.dirty = true;
+    }    
 
     @Override
     public void commit() throws IOException {
         final UpdateSeq committingSeq = pendingUpdateSeq;
-        if (dirty && committingSeq != null) {
+        final UpdateSeq committingPurgeSeq = pendingPurgeSeq;
+        if (dirty && (committingSeq != null || committingPurgeSeq != null)) {
             try {
-                this.writer.setLiveCommitData(createLiveCommitData("update_seq", committingSeq.getSeq()));
+                final Map<String, String> commitData = getLiveCommitData();
+                if (committingSeq != null) {
+                    commitData.put("update_seq", committingSeq.getSeq());
+                }
+                if (committingPurgeSeq != null) {
+                    commitData.put("purge_seq", committingPurgeSeq.getSeq());
+                }
+                this.writer.setLiveCommitData(commitData.entrySet());
                 this.writer.commit();
                 this.pendingUpdateSeq = null;
+                this.pendingPurgeSeq = null;
                 this.dirty = false;
-                logger.info("committed at update sequence \"{}\".", committingSeq.getSeq());
+                logger.info("committed: {}.", commitData);
             } catch (final IOException e) {
                 logger.catching(e);
                 throw e;
@@ -194,19 +197,19 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     private Map<String, String> getLiveCommitData() {
-        final Iterable<Entry<String, String>> it = writer.getLiveCommitData();
-        if (it == null) {
-            return null;
-        }
         final Map<String, String> result = new HashMap<String, String>();
-        for (final Entry<String, String> entry : it) {
-            result.put(entry.getKey(), entry.getValue());
+        final Iterable<Entry<String, String>> it = writer.getLiveCommitData();
+        if (it != null) {
+            for (final Entry<String, String> entry : it) {
+                result.put(entry.getKey(), entry.getValue());
+            }
         }
-        return result;
-    }
 
-    private Iterable<Entry<String, String>> createLiveCommitData(final String key, final String value) {
-        return Collections.singletonMap(key, value).entrySet();
+        // Defaults.
+        result.putIfAbsent("update_seq", "0");
+        result.putIfAbsent("purge_seq", "0");
+
+        return result;
     }
 
     @Override
