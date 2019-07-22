@@ -55,7 +55,16 @@ import io.grpc.stub.StreamObserver;
 
 public final class Search extends SearchGrpc.SearchImplBase implements Closeable {
 
+    @FunctionalInterface
+    interface LuceneConsumer<T> {
+
+        void accept(final T t) throws IOException, ParseException;
+
+    }
+
     private static final Logger LOGGER = LogManager.getLogger();
+
+    private static final int RETRY_LIMIT = 3;
 
     private class CommitTask implements Runnable {
 
@@ -160,89 +169,48 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     @Override
     public void info(final Index request, final StreamObserver<InfoResponse> responseObserver) {
-        try {
-            final SearchHandler handler = getOrOpen(request);
+        retry(request, responseObserver, handler -> {
             responseObserver.onNext(handler.info());
             responseObserver.onCompleted();
-        } catch (final IOException e) {
-            failedHandler(request, e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final RuntimeException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        }
+        });
     }
 
     @Override
     public void search(final SearchRequest request, final StreamObserver<SearchResponse> responseObserver) {
-        try {
-            final SearchHandler handler = getOrOpen(request.getIndex());
+        retry(request.getIndex(), responseObserver, handler -> {
             final SearchResponse response = handler.search(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
-        } catch (final IOException e) {
-            failedHandler(request.getIndex(), e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final ParseException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final RuntimeException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        }
+        });
     }
 
     @Override
     public void groupSearch(
             final GroupSearchRequest request,
             final StreamObserver<GroupSearchResponse> responseObserver) {
-        try {
-            final SearchHandler handler = getOrOpen(request.getIndex());
+        retry(request.getIndex(), responseObserver, handler -> {
             final GroupSearchResponse response = handler.groupSearch(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
-        } catch (final IOException e) {
-            failedHandler(request.getIndex(), e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final ParseException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final RuntimeException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        }
+        });
     }
 
     @Override
     public void updateDocument(final DocumentUpdateRequest request, final StreamObserver<Empty> responseObserver) {
-        try {
-            final SearchHandler handler = getOrOpen(request.getIndex());
+        retry(request.getIndex(), responseObserver, handler -> {
             handler.updateDocument(request);
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
-        } catch (final IOException e) {
-            failedHandler(request.getIndex(), e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final RuntimeException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        }
+        });
     }
 
     @Override
     public void deleteDocument(final DocumentDeleteRequest request, final StreamObserver<Empty> responseObserver) {
-        try {
-            final SearchHandler handler = getOrOpen(request.getIndex());
+        retry(request.getIndex(), responseObserver, handler -> {
             handler.deleteDocument(request);
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
-        } catch (final IOException e) {
-            failedHandler(request.getIndex(), e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final RuntimeException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        }
+        });
     }
 
     @Override
@@ -289,6 +257,35 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             }
         });
         handlers.clear();
+    }
+
+    private <T> void retry(
+            final Index index,
+            final StreamObserver<T> responseObserver,
+            final LuceneConsumer<SearchHandler> f) {
+        int retriesLeft = RETRY_LIMIT;
+        while (retriesLeft > 0) {
+            retriesLeft--;
+            final SearchHandler handler = getOrOpen(index);
+            try {
+                f.accept(handler);
+                return;
+            } catch (final IOException e) {
+                failedHandler(index, e);
+                if (retriesLeft == 0) {
+                    responseObserver.onError(fromThrowable(e));
+                    return;
+                }
+            } catch (final ParseException e) {
+                LOGGER.catching(e);
+                responseObserver.onError(fromThrowable(e));
+                return;
+            } catch (final RuntimeException e) {
+                LOGGER.catching(e);
+                responseObserver.onError(fromThrowable(e));
+                return;
+            }
+        }
     }
 
     private SearchHandler getOrOpen(final Index index) {
