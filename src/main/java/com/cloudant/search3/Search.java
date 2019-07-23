@@ -30,6 +30,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.util.BytesRef;
 
 import com.apple.foundationdb.Database;
@@ -270,7 +271,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             try {
                 f.accept(handler);
                 return;
-            } catch (final IOException e) {
+            } catch (final IOException | AlreadyClosedException e) {
                 failedHandler(index, e);
                 if (retriesLeft == 0) {
                     responseObserver.onError(fromThrowable(e));
