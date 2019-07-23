@@ -59,7 +59,7 @@ public class Main {
         });
 
         server.start();
-        LOGGER.info("Server started.");
+        LOGGER.info("Server started on port {}.", port);
         server.awaitTermination();
         LOGGER.info("Server terminated.");
     }
