@@ -76,7 +76,7 @@ public class SearchTest extends BaseFDBTest {
     @Parameters
     public static Collection<SearchHandlerFactory> factories() {
         return Arrays.asList(
-                new SearchHandlerFactory[] { new FDBIndexWriterSearchHandlerFactory(),
+                new SearchHandlerFactory[] { /* new FDBIndexWriterSearchHandlerFactory(), */
                         new FDBDirectorySearchHandlerFactory() });
     }
 
