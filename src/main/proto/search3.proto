@@ -66,9 +66,10 @@ message SearchRequest {
 }
 
 message SearchResponse {
-    Bookmark bookmark = 1;
-    uint64 matches = 2;
-    repeated Hit hits = 3;
+    UpdateSeq seq = 1;
+    Bookmark bookmark = 2;
+    uint64 matches = 3;
+    repeated Hit hits = 4;
 }
 
 message GroupSearchRequest {
@@ -83,9 +84,10 @@ message GroupSearchRequest {
 }
 
 message GroupSearchResponse {
-    uint64 matches = 1;
-    uint64 group_matches = 2;
-    repeated Group groups = 3;
+    UpdateSeq seq = 1;
+    uint64 matches = 2;
+    uint64 group_matches = 3;
+    repeated Group groups = 4;
 }
 
 message Group {

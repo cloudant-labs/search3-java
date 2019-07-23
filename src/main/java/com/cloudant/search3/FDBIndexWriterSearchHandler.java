@@ -98,6 +98,11 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
+    public UpdateSeq getUpdateSeq() {
+        return pendingUpdateSeq;
+    }
+
+    @Override
     public InfoResponse info() throws IOException {
         final InfoResponse.Builder builder = InfoResponse.newBuilder();
         builder.setPurgeSeq("0");

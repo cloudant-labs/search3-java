@@ -53,6 +53,7 @@ import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.HitField;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
+import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 public abstract class BaseSearchHandler implements SearchHandler {
 
@@ -125,6 +126,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 topDocs = searcher.searchAfter(after, query, defaultN(limit), sort);
             }
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
+            responseBuilder.setSeq(getUpdateSeq());
             responseBuilder.setMatches(topDocs.totalHits.value);
             addBookmark(responseBuilder, topDocs);
             for (int i = 0; i < topDocs.scoreDocs.length; i++) {
@@ -202,6 +204,8 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
     protected abstract <T> T withSearcher(final boolean staleOk, final IOFunction<IndexSearcher, T> f)
             throws IOException;
+
+    protected abstract UpdateSeq getUpdateSeq();
 
     protected static Set<String> toFieldSet(final SearchRequest request) {
         return new HashSet<String>(request.getIncludeFieldsList());

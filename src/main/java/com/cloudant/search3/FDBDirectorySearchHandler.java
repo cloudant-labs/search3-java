@@ -55,6 +55,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private final String toString;
     private final IndexWriter writer;
     private final SearcherManager manager;
+    private UpdateSeq committedUpdateSeq;
     private UpdateSeq pendingUpdateSeq;
     private UpdateSeq pendingPurgeSeq;
     private boolean dirty = false;
@@ -65,6 +66,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         this.logger = LogManager.getLogger(writer.getDirectory().toString());
         this.writer = writer;
         this.manager = manager;
+        this.committedUpdateSeq = getCommittedUpdateSeq(writer);
     }
 
     @Override
@@ -95,6 +97,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             final TopGroups<BytesRef> result = groupingSearch
                     .search(searcher, query, groupOffset, defaultN(groupLimit));
             final GroupSearchResponse.Builder responseBuilder = GroupSearchResponse.newBuilder();
+            responseBuilder.setSeq(getUpdateSeq());
             responseBuilder.setMatches(result.totalHitCount);
             responseBuilder.setGroupMatches(result.totalGroupedHitCount);
 
@@ -119,6 +122,15 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
+    public UpdateSeq getUpdateSeq() {
+        UpdateSeq result = pendingUpdateSeq;
+        if (result == null) {
+            result = committedUpdateSeq;
+        }
+        return result;
+    }
+
+    @Override
     public InfoResponse info() throws IOException {
         final InfoResponse.Builder builder = InfoResponse.newBuilder();
         withSearcher(false, searcher -> {
@@ -127,7 +139,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             return null;
         });
 
-        final Map<String, String> commitData = getLiveCommitData();
+        final Map<String, String> commitData = getLiveCommitData(writer);
         builder.setCommittedSeq(commitData.get("update_seq"));
         builder.setPurgeSeq(commitData.get("purge_seq"));
 
@@ -176,7 +188,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         final UpdateSeq committingPurgeSeq = pendingPurgeSeq;
         if (dirty && (committingSeq != null || committingPurgeSeq != null)) {
             try {
-                final Map<String, String> commitData = getLiveCommitData();
+                final Map<String, String> commitData = getLiveCommitData(writer);
                 if (committingSeq != null) {
                     commitData.put("update_seq", committingSeq.getSeq());
                 }
@@ -185,6 +197,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
                 }
                 this.writer.setLiveCommitData(commitData.entrySet());
                 this.writer.commit();
+                this.committedUpdateSeq = committingSeq;
                 this.pendingUpdateSeq = null;
                 this.pendingPurgeSeq = null;
                 this.dirty = false;
@@ -196,7 +209,12 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         }
     }
 
-    private Map<String, String> getLiveCommitData() {
+    private UpdateSeq getCommittedUpdateSeq(final IndexWriter writer) {
+        final String seq = getLiveCommitData(writer).get("update_seq");
+        return UpdateSeq.newBuilder().setSeq(seq).build();
+    }
+
+    private static Map<String, String> getLiveCommitData(final IndexWriter writer) {
         final Map<String, String> result = new HashMap<String, String>();
         final Iterable<Entry<String, String>> it = writer.getLiveCommitData();
         if (it != null) {
