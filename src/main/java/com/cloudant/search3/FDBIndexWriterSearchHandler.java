@@ -105,14 +105,11 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     @Override
     public InfoResponse info() throws IOException {
         final InfoResponse.Builder builder = InfoResponse.newBuilder();
-        builder.setPurgeSeq("0");
 
         try {
         db.run(txn -> {
             final byte[] seqValue = txn.get(updateSeqKey).join();
-            if (seqValue == null) {
-                builder.setCommittedSeq("0");
-            } else {
+                if (seqValue != null) {
                 builder.setCommittedSeq(Tuple.fromBytes(seqValue).getString(0));
             }
 

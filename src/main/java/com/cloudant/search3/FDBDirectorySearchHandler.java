@@ -140,8 +140,16 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         });
 
         final Map<String, String> commitData = getLiveCommitData(writer);
-        builder.setCommittedSeq(commitData.get("update_seq"));
-        builder.setPurgeSeq(commitData.get("purge_seq"));
+
+        final String updateSeq = commitData.get("update_seq");
+        if (updateSeq != null) {
+            builder.setCommittedSeq(updateSeq);
+        }
+
+        final String purgeSeq = commitData.get("purge_seq");
+        if (purgeSeq != null) {
+            builder.setPurgeSeq(purgeSeq);
+        }
 
         return builder.build();
     }
@@ -211,6 +219,9 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     private UpdateSeq getCommittedUpdateSeq(final IndexWriter writer) {
         final String seq = getLiveCommitData(writer).get("update_seq");
+        if (seq == null) {
+            return null;
+        }
         return UpdateSeq.newBuilder().setSeq(seq).build();
     }
 
@@ -222,11 +233,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
                 result.put(entry.getKey(), entry.getValue());
             }
         }
-
-        // Defaults.
-        result.putIfAbsent("update_seq", "0");
-        result.putIfAbsent("purge_seq", "0");
-
         return result;
     }
 
