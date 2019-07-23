@@ -126,7 +126,10 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 topDocs = searcher.searchAfter(after, query, defaultN(limit), sort);
             }
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
-            responseBuilder.setSeq(getUpdateSeq());
+            final UpdateSeq seq = getUpdateSeq();
+            if (seq != null) {
+                responseBuilder.setSeq(seq);
+            }
             responseBuilder.setMatches(topDocs.totalHits.value);
             addBookmark(responseBuilder, topDocs);
             for (int i = 0; i < topDocs.scoreDocs.length; i++) {

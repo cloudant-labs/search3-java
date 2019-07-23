@@ -97,7 +97,10 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             final TopGroups<BytesRef> result = groupingSearch
                     .search(searcher, query, groupOffset, defaultN(groupLimit));
             final GroupSearchResponse.Builder responseBuilder = GroupSearchResponse.newBuilder();
-            responseBuilder.setSeq(getUpdateSeq());
+            final UpdateSeq seq = getUpdateSeq();
+            if (seq != null) {
+                responseBuilder.setSeq(seq);
+            }
             responseBuilder.setMatches(result.totalHitCount);
             responseBuilder.setGroupMatches(result.totalGroupedHitCount);
 
