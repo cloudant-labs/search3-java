@@ -80,7 +80,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         @Override
         public void run() {
             try {
-                handler.commit();
+                if (dirty) {
+                    handler.commit();
+                    dirty = false;
+                }
             } catch (final IOException e) {
                 failedHandler(index, e);
                 throw new RuntimeException(e);
@@ -112,6 +115,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     private final ScheduledExecutorService scheduler;
     private final SearchHandlerFactory searchHandlerFactory;
     private final Map<Subspace, SearchHandler> handlers;
+    private boolean dirty = false;
     private final int commitIntervalSecs;
 
     public static Search create(final Configuration config) throws Exception {
@@ -202,6 +206,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             handler.updateDocument(request);
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
+            dirty = true;
         });
     }
 
@@ -211,6 +216,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             handler.deleteDocument(request);
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
+            dirty = true;
         });
     }
 

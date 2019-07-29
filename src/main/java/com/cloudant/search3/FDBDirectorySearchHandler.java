@@ -58,7 +58,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private UpdateSeq committedUpdateSeq;
     private UpdateSeq pendingUpdateSeq;
     private UpdateSeq pendingPurgeSeq;
-    private boolean dirty = false;
 
     FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager, final Analyzer analyzer) {
         super(analyzer);
@@ -173,7 +172,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         if (request.hasPurgeSeq()) {
             this.pendingPurgeSeq = request.getPurgeSeq();
         }
-        this.dirty = true;
     }
 
     @Override
@@ -190,14 +188,13 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         if (request.hasPurgeSeq()) {
             this.pendingPurgeSeq = request.getPurgeSeq();
         }
-        this.dirty = true;
     }    
 
     @Override
     public void commit() throws IOException {
         final UpdateSeq committingSeq = pendingUpdateSeq;
         final UpdateSeq committingPurgeSeq = pendingPurgeSeq;
-        if (dirty && (committingSeq != null || committingPurgeSeq != null)) {
+        if (committingSeq != null || committingPurgeSeq != null) {
             try {
                 final Map<String, String> commitData = getLiveCommitData(writer);
                 if (committingSeq != null) {
@@ -211,7 +208,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
                 this.committedUpdateSeq = committingSeq;
                 this.pendingUpdateSeq = null;
                 this.pendingPurgeSeq = null;
-                this.dirty = false;
                 logger.info("committed: {}.", commitData);
             } catch (final IOException e) {
                 logger.catching(e);
