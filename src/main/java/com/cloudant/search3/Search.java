@@ -67,12 +67,12 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     private static final int RETRY_LIMIT = 3;
 
-    private class CommitTask implements Runnable {
+    private class CommitOrCloseTask implements Runnable {
 
         private final Subspace index;
         private final SearchHandler handler;
 
-        private CommitTask(final Subspace index, final SearchHandler handler) {
+        private CommitOrCloseTask(final Subspace index, final SearchHandler handler) {
             this.index = index;
             this.handler = handler;
         }
@@ -80,6 +80,11 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         @Override
         public void run() {
             try {
+                if (idle) {
+                    throw new IdleHandlerException();
+                }
+                idle = true;
+
                 if (dirty) {
                     handler.commit();
                     dirty = false;
@@ -115,6 +120,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     private final ScheduledExecutorService scheduler;
     private final SearchHandlerFactory searchHandlerFactory;
     private final Map<Subspace, SearchHandler> handlers;
+    private boolean idle = true;
     private boolean dirty = false;
     private final int commitIntervalSecs;
 
@@ -177,6 +183,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         retry(request, responseObserver, handler -> {
             responseObserver.onNext(handler.info());
             responseObserver.onCompleted();
+            idle = false;
         });
     }
 
@@ -186,6 +193,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final SearchResponse response = handler.search(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
+            idle = false;
         });
     }
 
@@ -197,6 +205,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final GroupSearchResponse response = handler.groupSearch(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
+            idle = false;
         });
     }
 
@@ -207,6 +216,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
             dirty = true;
+            idle = false;
         });
     }
 
@@ -217,6 +227,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onNext(EMPTY);
             responseObserver.onCompleted();
             dirty = true;
+            idle = false;
         });
     }
 
@@ -303,7 +314,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             try {
                 final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
                 scheduler.scheduleWithFixedDelay(
-                        new CommitTask(subspace, result),
+                        new CommitOrCloseTask(subspace, result),
                         commitIntervalSecs,
                         commitIntervalSecs,
                         TimeUnit.SECONDS);
@@ -352,7 +363,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             if (handler != null) {
                 handler.close();
             }
-            LOGGER.warn("Closed failed handler for index {}.", index);
+            LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
         } catch (final IOException e1) {
             LOGGER.warn("Ignoring exception thrown while closing failed handler", e1);
         }
