@@ -123,7 +123,18 @@ public abstract class BaseSearchHandler implements SearchHandler {
             if (sort == null) {
                 topDocs = searcher.searchAfter(after, query, defaultN(limit));
             } else {
-                topDocs = searcher.searchAfter(after, query, defaultN(limit), sort);
+                try {
+                    topDocs = searcher.searchAfter(after, query, defaultN(limit), sort);
+                } catch (final IllegalStateException e) {
+                    final String message = e.getMessage();
+                    if (message != null && message.contains("(expected=NUMERIC)")) {
+                        throw new IllegalStateException("cannot sort string field as numeric field", e);
+                    }
+                    if (message != null && message.contains("(expected=SORTED)")) {
+                        throw new IllegalStateException("cannot sort numeric field as string field", e);
+                    }
+                    throw e;
+                }
             }
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
             final UpdateSeq seq = getUpdateSeq();
