@@ -132,6 +132,7 @@ message DocumentUpdateRequest {
     UpdateSeq seq = 3;
     UpdateSeq purge_seq = 4;
     repeated DocumentField fields = 5;
+    string partition = 6;
 }
 
 message DocumentDeleteRequest {
