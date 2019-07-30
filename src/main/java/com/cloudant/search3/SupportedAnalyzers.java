@@ -14,8 +14,8 @@
 
 package com.cloudant.search3;
 
+import java.util.HashMap;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.CharArraySet;
@@ -71,17 +71,24 @@ public final class SupportedAnalyzers {
     }
 
     public static Analyzer createAnalyzer(final Index index) {
-        if (index.getPerFieldCount() == 0) {
-            if (index.hasDefault()) {
-                return single(index.getDefault());
-            } else {
-                return new StandardAnalyzer();
-            }
+        final Analyzer defaultAnalyzer;
+        if (index.hasDefault()) {
+            defaultAnalyzer = single(index.getDefault());
+        } else {
+            defaultAnalyzer = new StandardAnalyzer();
         }
 
-        final Map<String, Analyzer> perfield = index.getPerFieldMap().entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> single(e.getValue())));
-        return new PerFieldAnalyzerWrapper(single(index.getDefault()), perfield);
+        final Map<String, Analyzer> fieldAnalyzers = new HashMap<String, Analyzer>();
+        fieldAnalyzers.put("_id", new KeywordAnalyzer());
+        fieldAnalyzers.put("_partition", new KeywordAnalyzer());
+
+        if (index.getPerFieldCount() >= 0) {
+            index.getPerFieldMap().entrySet().forEach(e -> {
+                fieldAnalyzers.put(e.getKey(), single(e.getValue()));
+            });
+        }
+
+        return new PerFieldAnalyzerWrapper(defaultAnalyzer, fieldAnalyzers);
     }
 
     public static Analyzer single(final AnalyzerSpec analyzerSpec) {

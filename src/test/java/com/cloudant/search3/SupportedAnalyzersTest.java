@@ -17,9 +17,12 @@ package com.cloudant.search3;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.Assert.assertThat;
 
+import java.lang.reflect.Field;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.fi.FinnishAnalyzer;
+import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.junit.Test;
 
@@ -28,25 +31,33 @@ import com.cloudant.search3.grpc.Search3.Index;
 
 public class SupportedAnalyzersTest {
 
+
     @Test
-    public void testEnglish() {
-        assertThat(single("english"), instanceOf(EnglishAnalyzer.class));
+    public void testEnglish() throws Exception {
+        assertDefault(single("english"), EnglishAnalyzer.class);
     }
 
     @Test
-    public void testStandard() {
-        assertThat(single("standard"), instanceOf(StandardAnalyzer.class));
+    public void testStandard() throws Exception {
+        assertDefault(single("standard"), StandardAnalyzer.class);
     }
 
     @Test
-    public void testFinnish() {
-        assertThat(single("finnish"), instanceOf(FinnishAnalyzer.class));
+    public void testFinnish() throws Exception {
+        assertDefault(single("finnish"), FinnishAnalyzer.class);
     }
 
     private Analyzer single(final String name) {
         final Index.Builder builder = Index.newBuilder();
         builder.setDefault(AnalyzerSpec.newBuilder().setName(name));
         return SupportedAnalyzers.createAnalyzer(builder.build());
+    }
+
+    private void assertDefault(final Analyzer analyzer, final Class<?> clazz) throws Exception {
+        assertThat(analyzer, instanceOf(PerFieldAnalyzerWrapper.class));
+        final Field f = analyzer.getClass().getDeclaredField("defaultAnalyzer");
+        f.setAccessible(true);
+        assertThat(f.get(analyzer), instanceOf(clazz));
     }
 
 }
