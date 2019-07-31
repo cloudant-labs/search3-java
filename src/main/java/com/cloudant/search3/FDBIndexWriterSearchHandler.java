@@ -33,6 +33,7 @@ import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
+import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
@@ -133,6 +134,11 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
         }
 
         return builder.build();
+    }
+
+    @Override
+    public void setUpdateSeq(final SetUpdateSeqRequest request) throws IOException {
+        throw new UnsupportedOperationException("setUpdateSeq not supported.");
     }
 
     @Override

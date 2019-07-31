@@ -46,6 +46,7 @@ import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
+import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.cloudant.search3.grpc.SearchGrpc;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Empty;
@@ -183,6 +184,17 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         retry(request, responseObserver, handler -> {
             responseObserver.onNext(handler.info());
             responseObserver.onCompleted();
+            idle = false;
+        });
+    }
+
+    @Override
+    public void setUpdateSequence(final SetUpdateSeqRequest request, final StreamObserver<Empty> responseObserver) {
+        retry(request.getIndex(), responseObserver, handler -> {
+            handler.setUpdateSeq(request);
+            responseObserver.onNext(EMPTY);
+            responseObserver.onCompleted();
+            dirty = true;
             idle = false;
         });
     }

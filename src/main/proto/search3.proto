@@ -16,6 +16,7 @@ service Search {
     // Write operations
     rpc UpdateDocument(DocumentUpdateRequest) returns (google.protobuf.Empty);
     rpc DeleteDocument(DocumentDeleteRequest) returns (google.protobuf.Empty);
+    rpc SetUpdateSequence(SetUpdateSeqRequest) returns (google.protobuf.Empty);
 
     // Non-index operations
     rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
@@ -140,6 +141,12 @@ message DocumentDeleteRequest {
     string id = 2;
     UpdateSeq seq = 3;
     UpdateSeq purge_seq = 4;
+}
+
+message SetUpdateSeqRequest {
+    Index index = 1;
+    UpdateSeq seq = 2;
+    UpdateSeq purge_seq = 3;
 }
 
 message AnalyzeRequest {

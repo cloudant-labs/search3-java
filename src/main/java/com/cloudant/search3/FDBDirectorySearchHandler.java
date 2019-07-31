@@ -42,6 +42,7 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
+import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 /**
@@ -130,6 +131,16 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             result = committedUpdateSeq;
         }
         return result;
+    }
+
+    @Override
+    public void setUpdateSeq(final SetUpdateSeqRequest request) throws IOException {
+        if (request.hasSeq()) {
+            this.pendingUpdateSeq = request.getSeq();
+        }
+        if (request.hasPurgeSeq()) {
+            this.pendingPurgeSeq = request.getPurgeSeq();
+        }
     }
 
     @Override

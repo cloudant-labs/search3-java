@@ -87,7 +87,6 @@ public final class SupportedAnalyzers {
                 fieldAnalyzers.put(e.getKey(), single(e.getValue()));
             });
         }
-
         return new PerFieldAnalyzerWrapper(defaultAnalyzer, fieldAnalyzers);
     }
 
