@@ -33,6 +33,7 @@ import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
+import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
@@ -77,7 +78,7 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void deleteDocument(final DocumentDeleteRequest request) throws IOException {
+    public SessionResponse deleteDocument(final DocumentDeleteRequest request) throws IOException {
         final String id = request.getId();
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("doc id is missing.");
@@ -91,6 +92,7 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
         logger.info("deleteDocument({})", id);
         writer.deleteDocuments(new Term("_id", id));
         this.pendingUpdateSeq = seq;
+        return sessionResponse();
     }
 
     @Override
@@ -99,13 +101,9 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public UpdateSeq getUpdateSeq() {
-        return pendingUpdateSeq;
-    }
-
-    @Override
     public InfoResponse info() throws IOException {
         final InfoResponse.Builder builder = InfoResponse.newBuilder();
+        builder.setSession(getSession());
 
         try {
         db.run(txn -> {
@@ -137,12 +135,12 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void setUpdateSeq(final SetUpdateSeqRequest request) throws IOException {
+    public SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException {
         throw new UnsupportedOperationException("setUpdateSeq not supported.");
     }
 
     @Override
-    public void updateDocument(final DocumentUpdateRequest request) throws IOException {
+    public SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException {
         final String id = request.getId();
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("doc id is missing.");
@@ -156,6 +154,7 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
         logger.info("updateDocument({}, {})", id, doc);
         writer.updateDocument(new Term("_id", id), doc);
         this.pendingUpdateSeq = seq;
+        return sessionResponse();
     }
 
     @Override
@@ -163,6 +162,11 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
         return reader.run(db, () -> {
             return f.apply(searcher);
         });
+    }
+
+    protected String getSession() {
+        // FDBIndexWriter does not require a session.
+        return "00000000-0000-0000-0000-000000000000";
     }
 
     @Override

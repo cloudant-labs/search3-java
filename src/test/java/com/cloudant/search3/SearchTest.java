@@ -41,9 +41,9 @@ import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
+import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.google.protobuf.ByteString;
-import com.google.protobuf.Empty;
 
 import io.grpc.stub.StreamObserver;
 
@@ -102,7 +102,7 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            final CollectingStreamObserver<Empty> serviceResponseCollector = new CollectingStreamObserver<Empty>();
+            final CollectingStreamObserver<SessionResponse> serviceResponseCollector = new CollectingStreamObserver<SessionResponse>();
             final DocumentUpdateRequest docUpdate = DocumentUpdateRequest.newBuilder().setIndex(index).setId("foobar")
                     .setSeq(seq("1"))
                     .addFields(field("foo", "bar baz", true)).build();
@@ -131,7 +131,7 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
             {
                 // Index something.
-                final CollectingStreamObserver<Empty> collector = new CollectingStreamObserver<Empty>();
+                final CollectingStreamObserver<SessionResponse> collector = new CollectingStreamObserver<SessionResponse>();
                 final DocumentUpdateRequest docUpdate = DocumentUpdateRequest.newBuilder().setIndex(index)
                         .setId("foobar")
                         .setSeq(seq("1"))

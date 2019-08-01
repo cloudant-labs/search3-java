@@ -46,6 +46,7 @@ import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
+import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.cloudant.search3.grpc.SearchGrpc;
 import com.google.protobuf.ByteString;
@@ -189,10 +190,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void setUpdateSequence(final SetUpdateSeqRequest request, final StreamObserver<Empty> responseObserver) {
+    public void setUpdateSequence(final SetUpdateSeqRequest request, final StreamObserver<SessionResponse> responseObserver) {
         retry(request.getIndex(), responseObserver, handler -> {
-            handler.setUpdateSeq(request);
-            responseObserver.onNext(EMPTY);
+            final SessionResponse response = handler.setUpdateSeq(request);
+            responseObserver.onNext(response);
             responseObserver.onCompleted();
             dirty = true;
             idle = false;
@@ -222,10 +223,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void updateDocument(final DocumentUpdateRequest request, final StreamObserver<Empty> responseObserver) {
+    public void updateDocument(final DocumentUpdateRequest request, final StreamObserver<SessionResponse> responseObserver) {
         retry(request.getIndex(), responseObserver, handler -> {
-            handler.updateDocument(request);
-            responseObserver.onNext(EMPTY);
+            final SessionResponse response = handler.updateDocument(request);
+            responseObserver.onNext(response);
             responseObserver.onCompleted();
             dirty = true;
             idle = false;
@@ -233,10 +234,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     @Override
-    public void deleteDocument(final DocumentDeleteRequest request, final StreamObserver<Empty> responseObserver) {
+    public void deleteDocument(final DocumentDeleteRequest request, final StreamObserver<SessionResponse> responseObserver) {
         retry(request.getIndex(), responseObserver, handler -> {
-            handler.deleteDocument(request);
-            responseObserver.onNext(EMPTY);
+            final SessionResponse response = handler.deleteDocument(request);
+            responseObserver.onNext(response);
             responseObserver.onCompleted();
             dirty = true;
             idle = false;

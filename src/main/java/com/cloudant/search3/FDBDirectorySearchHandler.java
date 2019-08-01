@@ -35,6 +35,7 @@ import org.apache.lucene.search.grouping.GroupingSearch;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.BytesRef;
 
+import com.cloudant.fdblucene.FDBDirectory;
 import com.cloudant.search3.grpc.Search3.DocumentDeleteRequest;
 import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.Group;
@@ -42,6 +43,7 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
+import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
@@ -54,19 +56,20 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private static final double GROUP_CACHING_MB = 4.0;
 
     private final String toString;
+    private final FDBDirectory dir;
     private final IndexWriter writer;
     private final SearcherManager manager;
-    private UpdateSeq committedUpdateSeq;
     private UpdateSeq pendingUpdateSeq;
     private UpdateSeq pendingPurgeSeq;
 
-    FDBDirectorySearchHandler(final IndexWriter writer, final SearcherManager manager, final Analyzer analyzer) {
+    FDBDirectorySearchHandler(final FDBDirectory dir, final IndexWriter writer, final SearcherManager manager,
+            final Analyzer analyzer) {
         super(analyzer);
         this.toString = String.format("FDBDirectorySearchHandler(%s)", writer.getDirectory());
-        this.logger = LogManager.getLogger(writer.getDirectory().toString());
+        this.logger = LogManager.getLogger(dir.toString());
+        this.dir = dir;
         this.writer = writer;
         this.manager = manager;
-        this.committedUpdateSeq = getCommittedUpdateSeq(writer);
     }
 
     @Override
@@ -97,10 +100,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             final TopGroups<BytesRef> result = groupingSearch
                     .search(searcher, query, groupOffset, defaultN(groupLimit));
             final GroupSearchResponse.Builder responseBuilder = GroupSearchResponse.newBuilder();
-            final UpdateSeq seq = getUpdateSeq();
-            if (seq != null) {
-                responseBuilder.setSeq(seq);
-            }
+            responseBuilder.setSession(getSession());
             responseBuilder.setMatches(result.totalHitCount);
             responseBuilder.setGroupMatches(result.totalGroupedHitCount);
 
@@ -125,22 +125,14 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public UpdateSeq getUpdateSeq() {
-        UpdateSeq result = pendingUpdateSeq;
-        if (result == null) {
-            result = committedUpdateSeq;
-        }
-        return result;
-    }
-
-    @Override
-    public void setUpdateSeq(final SetUpdateSeqRequest request) throws IOException {
+    public SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException {
         if (request.hasSeq()) {
             this.pendingUpdateSeq = request.getSeq();
         }
         if (request.hasPurgeSeq()) {
             this.pendingPurgeSeq = request.getPurgeSeq();
         }
+        return sessionResponse();
     }
 
     @Override
@@ -151,6 +143,12 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             builder.setDocDelCount(searcher.getIndexReader().numDeletedDocs());
             return null;
         });
+        builder.setSession(getSession());
+
+        final UpdateSeq pendingUpdateSeq = this.pendingUpdateSeq;
+        if (pendingUpdateSeq != null) {
+            builder.setPendingSeq(pendingUpdateSeq.getSeq());
+        }
 
         final Map<String, String> commitData = getLiveCommitData(writer);
 
@@ -168,7 +166,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public void updateDocument(final DocumentUpdateRequest request) throws IOException {
+    public SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException {
         final String id = request.getId();
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("doc id is missing.");
@@ -183,10 +181,11 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         if (request.hasPurgeSeq()) {
             this.pendingPurgeSeq = request.getPurgeSeq();
         }
+        return sessionResponse();
     }
 
     @Override
-    public void deleteDocument(final DocumentDeleteRequest request) throws IOException {
+    public SessionResponse deleteDocument(final DocumentDeleteRequest request) throws IOException {
         final String id = request.getId();
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("doc id is missing.");
@@ -199,6 +198,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         if (request.hasPurgeSeq()) {
             this.pendingPurgeSeq = request.getPurgeSeq();
         }
+        return sessionResponse();
     }    
 
     @Override
@@ -216,7 +216,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
                 }
                 this.writer.setLiveCommitData(commitData.entrySet());
                 this.writer.commit();
-                this.committedUpdateSeq = committingSeq;
                 this.pendingUpdateSeq = null;
                 this.pendingPurgeSeq = null;
                 logger.info("committed: {}.", commitData);
@@ -225,14 +224,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
                 throw e;
             }
         }
-    }
-
-    private UpdateSeq getCommittedUpdateSeq(final IndexWriter writer) {
-        final String seq = getLiveCommitData(writer).get("update_seq");
-        if (seq == null) {
-            return null;
-        }
-        return UpdateSeq.newBuilder().setSeq(seq).build();
     }
 
     private static Map<String, String> getLiveCommitData(final IndexWriter writer) {
@@ -262,6 +253,11 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     @Override
     public String toString() {
         return toString;
+    }
+
+    protected String getSession() {
+        // Demeter? I hardly know her.
+        return dir.getUUID().toString();
     }
 
 }

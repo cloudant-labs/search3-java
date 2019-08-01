@@ -14,9 +14,9 @@ service Search {
     rpc GroupSearch(GroupSearchRequest) returns (GroupSearchResponse);
 
     // Write operations
-    rpc UpdateDocument(DocumentUpdateRequest) returns (google.protobuf.Empty);
-    rpc DeleteDocument(DocumentDeleteRequest) returns (google.protobuf.Empty);
-    rpc SetUpdateSequence(SetUpdateSeqRequest) returns (google.protobuf.Empty);
+    rpc UpdateDocument(DocumentUpdateRequest) returns (SessionResponse);
+    rpc DeleteDocument(DocumentDeleteRequest) returns (SessionResponse);
+    rpc SetUpdateSequence(SetUpdateSeqRequest) returns (SessionResponse);
 
     // Non-index operations
     rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
@@ -37,11 +37,17 @@ message UpdateSeq {
     string seq = 1;
 }
 
+message SessionResponse {
+    string session = 1;
+}
+
 message InfoResponse {
-    uint32 doc_count = 1;
-    uint32 doc_del_count = 2;
-    string committed_seq = 3;
-    string purge_seq = 4;
+    string session = 1;
+    uint32 doc_count = 2;
+    uint32 doc_del_count = 3;
+    string pending_seq = 4;
+    string committed_seq = 5;
+    string purge_seq = 6;
 }
 
 message Sort {
@@ -67,7 +73,7 @@ message SearchRequest {
 }
 
 message SearchResponse {
-    UpdateSeq seq = 1;
+    string session = 1;
     Bookmark bookmark = 2;
     uint64 matches = 3;
     repeated Hit hits = 4;
@@ -85,7 +91,7 @@ message GroupSearchRequest {
 }
 
 message GroupSearchResponse {
-    UpdateSeq seq = 1;
+    string session = 1;
     uint64 matches = 2;
     uint64 group_matches = 3;
     repeated Group groups = 4;

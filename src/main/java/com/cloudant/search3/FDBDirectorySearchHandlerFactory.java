@@ -34,12 +34,12 @@ public final class FDBDirectorySearchHandlerFactory implements SearchHandlerFact
 
     @Override
     public SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer) throws IOException {
-        final Directory dir = FDBDirectory.open(db, index, PAGE_SIZE, TXN_SIZE);
+        final FDBDirectory dir = FDBDirectory.open(db, index, PAGE_SIZE, TXN_SIZE);
         forciblyUnlock(dir);
         final IndexWriterConfig indexWriterConfig = indexWriterConfig(analyzer);
         final IndexWriter writer = new IndexWriter(dir, indexWriterConfig);
         final SearcherManager manager = new SearcherManager(writer, null);
-        return new FDBDirectorySearchHandler(writer, manager, analyzer);
+        return new FDBDirectorySearchHandler(dir, writer, manager, analyzer);
     }
 
     /**

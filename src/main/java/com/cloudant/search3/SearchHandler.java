@@ -25,6 +25,7 @@ import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
+import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 
 public interface SearchHandler {
@@ -32,7 +33,7 @@ public interface SearchHandler {
 
     void commit() throws IOException;
 
-    void deleteDocument(final DocumentDeleteRequest request) throws IOException;
+    SessionResponse deleteDocument(final DocumentDeleteRequest request) throws IOException;
 
     GroupSearchResponse groupSearch(GroupSearchRequest request) throws IOException, ParseException;
 
@@ -40,7 +41,7 @@ public interface SearchHandler {
 
     SearchResponse search(final SearchRequest request) throws IOException, ParseException;
 
-    void setUpdateSeq(final SetUpdateSeqRequest request) throws IOException;
+    SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException;
 
-    void updateDocument(final DocumentUpdateRequest request) throws IOException;
+    SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException;
 }
