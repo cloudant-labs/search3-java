@@ -51,9 +51,11 @@ import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.HitField;
+import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
+import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 public abstract class BaseSearchHandler implements SearchHandler {
 
@@ -111,6 +113,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
     @Override
     public final SearchResponse search(final SearchRequest request) throws IOException, ParseException {
+        verifySession(request.getIndex());
         final int limit = request.getLimit();
         final Set<String> fieldsToLoad = toFieldSet(request);
         final boolean staleOk = request.getStale();
@@ -363,4 +366,20 @@ public abstract class BaseSearchHandler implements SearchHandler {
         }
         return builder.build();
     }
+
+    protected static UpdateSeq seq(final String value) {
+        return UpdateSeq.newBuilder().setSeq(value).build();
+    }
+
+    protected final void verifySession(final Index index) {
+        final String session = index.getSession();
+        if (session.isEmpty()) {
+            return;
+        }
+        if (getSession().equals(session)) {
+            return;
+        }
+        throw new SessionMismatchException("session mismatch");
+    }
+
 }

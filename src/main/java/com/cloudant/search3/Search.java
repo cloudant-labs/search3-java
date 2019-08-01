@@ -183,7 +183,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     @Override
     public void info(final Index request, final StreamObserver<InfoResponse> responseObserver) {
         retry(request, responseObserver, handler -> {
-            responseObserver.onNext(handler.info());
+            responseObserver.onNext(handler.info(request));
             responseObserver.onCompleted();
             idle = false;
         });
@@ -309,6 +309,9 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 }
             } catch (final ParseException e) {
                 LOGGER.catching(e);
+                responseObserver.onError(fromThrowable(e));
+                return;
+            } catch (final SessionMismatchException e) {
                 responseObserver.onError(fromThrowable(e));
                 return;
             } catch (final RuntimeException e) {

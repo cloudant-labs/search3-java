@@ -42,6 +42,7 @@ import com.cloudant.search3.grpc.Search3.Group;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
+import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
@@ -80,6 +81,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public GroupSearchResponse groupSearch(final GroupSearchRequest request) throws IOException, ParseException {
+        verifySession(request.getIndex());
         final int limit = request.getLimit();
         final boolean staleOk = request.getStale();
         final String groupBy = request.getGroupBy();
@@ -126,6 +128,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException {
+        verifySession(request.getIndex());
         if (request.hasSeq()) {
             this.pendingUpdateSeq = request.getSeq();
         }
@@ -136,7 +139,8 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public InfoResponse info() throws IOException {
+    public InfoResponse info(final Index request) throws IOException {
+        verifySession(request);
         final InfoResponse.Builder builder = InfoResponse.newBuilder();
         withSearcher(false, searcher -> {
             builder.setDocCount(searcher.getIndexReader().numDocs());
@@ -147,19 +151,24 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
         final UpdateSeq pendingUpdateSeq = this.pendingUpdateSeq;
         if (pendingUpdateSeq != null) {
-            builder.setPendingSeq(pendingUpdateSeq.getSeq());
+            builder.setPendingSeq(pendingUpdateSeq);
+        }
+
+        final UpdateSeq pendingPurgeSeq = this.pendingPurgeSeq;
+        if (pendingPurgeSeq != null) {
+            builder.setPendingPurgeSeq(pendingPurgeSeq);
         }
 
         final Map<String, String> commitData = getLiveCommitData(writer);
 
         final String updateSeq = commitData.get("update_seq");
         if (updateSeq != null) {
-            builder.setCommittedSeq(updateSeq);
+            builder.setCommittedSeq(seq(updateSeq));
         }
 
         final String purgeSeq = commitData.get("purge_seq");
         if (purgeSeq != null) {
-            builder.setPurgeSeq(purgeSeq);
+            builder.setPurgeSeq(seq(purgeSeq));
         }
 
         return builder.build();
@@ -167,6 +176,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException {
+        verifySession(request.getIndex());
         final String id = request.getId();
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("doc id is missing.");
@@ -186,6 +196,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public SessionResponse deleteDocument(final DocumentDeleteRequest request) throws IOException {
+        verifySession(request.getIndex());
         final String id = request.getId();
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("doc id is missing.");
@@ -250,14 +261,14 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         }
     }
 
-    @Override
-    public String toString() {
-        return toString;
-    }
-
     protected String getSession() {
         // Demeter? I hardly know her.
         return dir.getUUID().toString();
+    }
+
+    @Override
+    public String toString() {
+        return toString;
     }
 
 }

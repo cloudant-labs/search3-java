@@ -24,8 +24,9 @@ service Search {
 
 message Index {
     bytes prefix = 1;
-    AnalyzerSpec default = 2;
-	map<string, AnalyzerSpec> per_field = 3;
+    string session = 2;
+    AnalyzerSpec default = 3;
+	map<string, AnalyzerSpec> per_field = 4;
 }
 
 message AnalyzerSpec {
@@ -45,9 +46,10 @@ message InfoResponse {
     string session = 1;
     uint32 doc_count = 2;
     uint32 doc_del_count = 3;
-    string pending_seq = 4;
-    string committed_seq = 5;
-    string purge_seq = 6;
+    UpdateSeq pending_seq = 4;
+    UpdateSeq committed_seq = 5;
+    UpdateSeq pending_purge_seq = 6;
+    UpdateSeq purge_seq = 7;
 }
 
 message Sort {

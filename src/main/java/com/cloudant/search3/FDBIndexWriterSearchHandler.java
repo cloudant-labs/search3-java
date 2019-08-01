@@ -32,6 +32,7 @@ import com.cloudant.search3.grpc.Search3.DocumentDeleteRequest;
 import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
+import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
@@ -101,7 +102,7 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    public InfoResponse info() throws IOException {
+    public InfoResponse info(final Index request) throws IOException {
         final InfoResponse.Builder builder = InfoResponse.newBuilder();
         builder.setSession(getSession());
 
@@ -109,8 +110,8 @@ public final class FDBIndexWriterSearchHandler extends BaseSearchHandler {
         db.run(txn -> {
             final byte[] seqValue = txn.get(updateSeqKey).join();
                 if (seqValue != null) {
-                builder.setCommittedSeq(Tuple.fromBytes(seqValue).getString(0));
-            }
+                    builder.setCommittedSeq(seq(Tuple.fromBytes(seqValue).getString(0)));
+                }
 
             try {
                 reader.run(txn, () -> {
