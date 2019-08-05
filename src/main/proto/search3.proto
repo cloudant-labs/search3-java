@@ -115,7 +115,7 @@ message DocumentField {
     string name = 1;
     FieldValue value = 2;
     bool analyzed = 3;
-    bool stored = 4;
+    bool store = 4;
     bool facet = 5;
 }
 

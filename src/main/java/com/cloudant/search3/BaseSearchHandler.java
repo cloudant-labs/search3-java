@@ -337,21 +337,21 @@ public abstract class BaseSearchHandler implements SearchHandler {
             final String name = field.getName();
             final FieldValue value = field.getValue();
             final boolean analyzed = field.getAnalyzed();
-            final boolean stored = field.getStored();
+            final boolean store = field.getStore();
             final boolean facet = field.getFacet();
 
             switch (value.getValueCase()) {
             case BOOL:
-                builder.addBoolean(name, value.getBool(), stored);
+                builder.addBoolean(name, value.getBool(), store);
                 break;
             case DOUBLE:
-                builder.addDouble(name, value.getDouble(), stored);
+                builder.addDouble(name, value.getDouble(), store);
                 break;
             case STRING:
                 if (analyzed) {
-                    builder.addText(name, value.getString(), stored, facet);
+                    builder.addText(name, value.getString(), store, facet);
                 } else {
-                    builder.addString(name, value.getString(), stored);
+                    builder.addString(name, value.getString(), store);
                 }
                 break;
             default:
