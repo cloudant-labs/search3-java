@@ -16,6 +16,7 @@ package com.cloudant.search3;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -33,6 +34,7 @@ import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.CollectorManager;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
@@ -41,6 +43,12 @@ import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.TopFieldCollector;
+import org.apache.lucene.search.TopFieldDocs;
+import org.apache.lucene.search.TopScoreDocCollector;
+import org.apache.lucene.search.TotalHitCountCollector;
+import org.apache.lucene.search.TotalHits;
+import org.apache.lucene.search.TotalHits.Relation;
 import org.apache.lucene.util.BytesRef;
 
 import com.cloudant.search3.grpc.Search3;
@@ -59,6 +67,7 @@ import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 public abstract class BaseSearchHandler implements SearchHandler {
 
+    private static final ScoreDoc[] EMPTY_SCORE_DOC = new ScoreDoc[0];
     private static final SortField INVERSE_FIELD_SCORE = new SortField(null, SortField.Type.SCORE, true);
     private static final SortField INVERSE_FIELD_DOC = new SortField(null, SortField.Type.DOC, true);
 
@@ -117,11 +126,21 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
         return withSearcher(staleOk, searcher -> {
             final TopDocs topDocs;
-            if (sort == null) {
-                topDocs = searcher.searchAfter(after, query, limit);
+
+            if (limit == 0) {
+                final CollectorManager<TotalHitCountCollector, TopDocs> manager = totalHitCollector();
+                topDocs = searcher.search(query, manager);
+            } else if (sort == null) {
+                final CollectorManager<TopScoreDocCollector, TopDocs> manager = topScoreDocCollector(after, limit);
+                topDocs = searcher.search(query, manager);
             } else {
+                final CollectorManager<TopFieldCollector, TopFieldDocs> manager = topFieldDocCollector(
+                        searcher,
+                        (FieldDoc) after,
+                        sort,
+                        limit);
                 try {
-                    topDocs = searcher.searchAfter(after, query, limit, sort);
+                    topDocs = searcher.search(query, manager);
                 } catch (final IllegalStateException e) {
                     final String message = e.getMessage();
                     if (message != null && message.contains("(expected=NUMERIC)")) {
@@ -374,6 +393,75 @@ public abstract class BaseSearchHandler implements SearchHandler {
             return;
         }
         throw new SessionMismatchException("session mismatch");
+    }
+
+    private CollectorManager<TotalHitCountCollector, TopDocs> totalHitCollector() {
+        return new CollectorManager<TotalHitCountCollector, TopDocs>() {
+
+            @Override
+            public TotalHitCountCollector newCollector() throws IOException {
+                return new TotalHitCountCollector();
+            }
+
+            @Override
+            public TopDocs reduce(Collection<TotalHitCountCollector> collectors) throws IOException {
+                int count = 0;
+                for (TotalHitCountCollector collector : collectors) {
+                    count += collector.getTotalHits();
+                }
+                return new TopDocs(new TotalHits(count, Relation.EQUAL_TO), EMPTY_SCORE_DOC);
+            }
+        };
+    }
+
+    private CollectorManager<TopScoreDocCollector, TopDocs> topScoreDocCollector(
+            final ScoreDoc after,
+            final int limit) {
+        return new CollectorManager<TopScoreDocCollector, TopDocs>() {
+
+            @Override
+            public TopScoreDocCollector newCollector() throws IOException {
+                return TopScoreDocCollector.create(limit, after, Integer.MAX_VALUE);
+            }
+
+            @Override
+            public TopDocs reduce(Collection<TopScoreDocCollector> collectors) throws IOException {
+                final TopDocs[] topDocs = new TopDocs[collectors.size()];
+                int i = 0;
+                for (TopScoreDocCollector collector : collectors) {
+                    topDocs[i++] = collector.topDocs();
+                }
+                return TopDocs.merge(0, limit, topDocs, true);
+            }
+
+        };
+
+    }
+
+    private CollectorManager<TopFieldCollector, TopFieldDocs> topFieldDocCollector(
+            final IndexSearcher searcher,
+            final FieldDoc after,
+            final Sort sort,
+            final int limit) throws IOException {
+        final Sort rewrittenSort = sort.rewrite(searcher);
+        return new CollectorManager<TopFieldCollector, TopFieldDocs>() {
+
+            @Override
+            public TopFieldCollector newCollector() throws IOException {
+                return TopFieldCollector.create(rewrittenSort, limit, after, Integer.MAX_VALUE);
+            }
+
+            @Override
+            public TopFieldDocs reduce(Collection<TopFieldCollector> collectors) throws IOException {
+                final TopFieldDocs[] topDocs = new TopFieldDocs[collectors.size()];
+                int i = 0;
+                for (TopFieldCollector collector : collectors) {
+                    topDocs[i++] = collector.topDocs();
+                }
+                return TopDocs.merge(rewrittenSort, 0, limit, topDocs, true);
+            }
+
+        };
     }
 
 }
