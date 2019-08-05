@@ -182,7 +182,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     @Override
     public void info(final Index request, final StreamObserver<InfoResponse> responseObserver) {
-        retry(request, responseObserver, handler -> {
+        execute(request, responseObserver, handler -> {
             responseObserver.onNext(handler.info(request));
             responseObserver.onCompleted();
             idle = false;
@@ -191,7 +191,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     @Override
     public void setUpdateSequence(final SetUpdateSeqRequest request, final StreamObserver<SessionResponse> responseObserver) {
-        retry(request.getIndex(), responseObserver, handler -> {
+        execute(request.getIndex(), responseObserver, handler -> {
             final SessionResponse response = handler.setUpdateSeq(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -202,7 +202,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     @Override
     public void search(final SearchRequest request, final StreamObserver<SearchResponse> responseObserver) {
-        retry(request.getIndex(), responseObserver, handler -> {
+        execute(request.getIndex(), responseObserver, handler -> {
             final SearchResponse response = handler.search(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -214,7 +214,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     public void groupSearch(
             final GroupSearchRequest request,
             final StreamObserver<GroupSearchResponse> responseObserver) {
-        retry(request.getIndex(), responseObserver, handler -> {
+        execute(request.getIndex(), responseObserver, handler -> {
             final GroupSearchResponse response = handler.groupSearch(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -224,7 +224,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     @Override
     public void updateDocument(final DocumentUpdateRequest request, final StreamObserver<SessionResponse> responseObserver) {
-        retry(request.getIndex(), responseObserver, handler -> {
+        execute(request.getIndex(), responseObserver, handler -> {
             final SessionResponse response = handler.updateDocument(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -235,7 +235,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     @Override
     public void deleteDocument(final DocumentDeleteRequest request, final StreamObserver<SessionResponse> responseObserver) {
-        retry(request.getIndex(), responseObserver, handler -> {
+        execute(request.getIndex(), responseObserver, handler -> {
             final SessionResponse response = handler.deleteDocument(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
@@ -290,7 +290,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         handlers.clear();
     }
 
-    private <T> void retry(
+    private <T> void execute(
             final Index index,
             final StreamObserver<T> responseObserver,
             final LuceneConsumer<SearchHandler> f) {
