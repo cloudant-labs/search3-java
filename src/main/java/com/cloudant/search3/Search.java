@@ -67,8 +67,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     private static final Logger LOGGER = LogManager.getLogger();
 
-    private static final int RETRY_LIMIT = 3;
-
     private class CommitOrCloseTask implements Runnable {
 
         private final Subspace index;
@@ -294,31 +292,25 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final Index index,
             final StreamObserver<T> responseObserver,
             final LuceneConsumer<SearchHandler> f) {
-        int retriesLeft = RETRY_LIMIT;
-        while (retriesLeft > 0) {
-            retriesLeft--;
-            final SearchHandler handler = getOrOpen(index);
-            try {
-                f.accept(handler);
-                return;
-            } catch (final IOException | AlreadyClosedException e) {
-                failedHandler(index, e);
-                if (retriesLeft == 0) {
-                    responseObserver.onError(fromThrowable(e));
-                    return;
-                }
-            } catch (final ParseException e) {
-                LOGGER.catching(e);
-                responseObserver.onError(fromThrowable(e));
-                return;
-            } catch (final SessionMismatchException e) {
-                responseObserver.onError(fromThrowable(e));
-                return;
-            } catch (final RuntimeException e) {
-                LOGGER.catching(e);
-                responseObserver.onError(fromThrowable(e));
-                return;
-            }
+        final SearchHandler handler = getOrOpen(index);
+        try {
+            f.accept(handler);
+            return;
+        } catch (final IOException | AlreadyClosedException e) {
+            failedHandler(index, e);
+            responseObserver.onError(fromThrowable(e));
+            return;
+        } catch (final ParseException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(fromThrowable(e));
+            return;
+        } catch (final SessionMismatchException e) {
+            responseObserver.onError(fromThrowable(e));
+            return;
+        } catch (final RuntimeException e) {
+            LOGGER.catching(e);
+            responseObserver.onError(fromThrowable(e));
+            return;
         }
     }
 
