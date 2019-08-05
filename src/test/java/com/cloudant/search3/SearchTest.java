@@ -169,7 +169,7 @@ public class SearchTest extends BaseFDBTest {
 
     private DocumentField field(final String name, final String value, final boolean analyzed) {
         return DocumentField.newBuilder().setName(name).setValue(fieldValue(value)).setAnalyzed(analyzed)
-                .setStored(true).build();
+                .setStore(true).build();
     }
 
     private FieldValue.Builder fieldValue(final double value) {
