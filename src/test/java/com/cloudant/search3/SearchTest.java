@@ -112,7 +112,8 @@ public class SearchTest extends BaseFDBTest {
             assertTrue(serviceResponseCollector.completed);
 
             // Find it with a search?
-            final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar").build();
+            final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar")
+                    .setLimit(25).build();
 
             final CollectingStreamObserver<SearchResponse> searchResponseCollector = new CollectingStreamObserver<SearchResponse>();
             search.search(searchRequest, searchResponseCollector);
@@ -145,7 +146,7 @@ public class SearchTest extends BaseFDBTest {
             {
                 // Find it with a search?
                 final GroupSearchRequest groupSearchRequest = GroupSearchRequest.newBuilder().setIndex(index)
-                        .setGroupBy("category").setQuery("foo:bar").build();
+                        .setGroupBy("category").setQuery("foo:bar").setLimit(25).setGroupLimit(25).build();
 
                 final CollectingStreamObserver<GroupSearchResponse> collector = new CollectingStreamObserver<GroupSearchResponse>();
                 search.groupSearch(groupSearchRequest, collector);
