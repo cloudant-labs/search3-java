@@ -131,7 +131,10 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 final CollectorManager<TotalHitCountCollector, TopDocs> manager = totalHitCollector();
                 topDocs = searcher.search(query, manager);
             } else if (sort == null) {
-                final CollectorManager<TopScoreDocCollector, TopDocs> manager = topScoreDocCollector(after, limit);
+                final CollectorManager<TopScoreDocCollector, TopDocs> manager = topScoreDocCollector(
+                        searcher,
+                        after,
+                        limit);
                 topDocs = searcher.search(query, manager);
             } else {
                 final CollectorManager<TopFieldCollector, TopFieldDocs> manager = topFieldDocCollector(
@@ -415,13 +418,22 @@ public abstract class BaseSearchHandler implements SearchHandler {
     }
 
     private CollectorManager<TopScoreDocCollector, TopDocs> topScoreDocCollector(
+            final IndexSearcher searcher,
             final ScoreDoc after,
-            final int limit) {
+            final int numHits) {
+        final int limit = Math.max(1, searcher.getIndexReader().maxDoc());
+        if (after != null && after.doc >= limit) {
+            throw new IllegalArgumentException("after.doc exceeds the number of documents in the reader: after.doc="
+                    + after.doc + " limit=" + limit);
+        }
+
+        final int cappedNumHits = Math.min(numHits, limit);
+
         return new CollectorManager<TopScoreDocCollector, TopDocs>() {
 
             @Override
             public TopScoreDocCollector newCollector() throws IOException {
-                return TopScoreDocCollector.create(limit, after, Integer.MAX_VALUE);
+                return TopScoreDocCollector.create(cappedNumHits, after, Integer.MAX_VALUE);
             }
 
             @Override
@@ -431,24 +443,29 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 for (TopScoreDocCollector collector : collectors) {
                     topDocs[i++] = collector.topDocs();
                 }
-                return TopDocs.merge(0, limit, topDocs, true);
+                return TopDocs.merge(0, cappedNumHits, topDocs, true);
             }
 
         };
-
     }
 
     private CollectorManager<TopFieldCollector, TopFieldDocs> topFieldDocCollector(
             final IndexSearcher searcher,
             final FieldDoc after,
             final Sort sort,
-            final int limit) throws IOException {
+            final int numHits) throws IOException {
+        final int limit = Math.max(1, searcher.getIndexReader().maxDoc());
+        if (after != null && after.doc >= limit) {
+            throw new IllegalArgumentException("after.doc exceeds the number of documents in the reader: after.doc="
+                    + after.doc + " limit=" + limit);
+        }
+        final int cappedNumHits = Math.min(numHits, limit);
         final Sort rewrittenSort = sort.rewrite(searcher);
         return new CollectorManager<TopFieldCollector, TopFieldDocs>() {
 
             @Override
             public TopFieldCollector newCollector() throws IOException {
-                return TopFieldCollector.create(rewrittenSort, limit, after, Integer.MAX_VALUE);
+                return TopFieldCollector.create(rewrittenSort, cappedNumHits, after, Integer.MAX_VALUE);
             }
 
             @Override
@@ -458,7 +475,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 for (TopFieldCollector collector : collectors) {
                     topDocs[i++] = collector.topDocs();
                 }
-                return TopDocs.merge(rewrittenSort, 0, limit, topDocs, true);
+                return TopDocs.merge(rewrittenSort, 0, cappedNumHits, topDocs, true);
             }
 
         };
