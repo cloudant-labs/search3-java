@@ -96,11 +96,11 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         }
         groupingSearch.setCachingInMB(GROUP_CACHING_MB, true);
         groupingSearch.setAllGroups(false);
-        groupingSearch.setGroupDocsLimit(defaultN(limit));
+        groupingSearch.setGroupDocsLimit(limit);
 
         return withSearcher(staleOk, searcher -> {
             final TopGroups<BytesRef> result = groupingSearch
-                    .search(searcher, query, groupOffset, defaultN(groupLimit));
+                    .search(searcher, query, groupOffset, groupLimit);
             final GroupSearchResponse.Builder responseBuilder = GroupSearchResponse.newBuilder();
             responseBuilder.setSession(getSession());
             responseBuilder.setMatches(result.totalHitCount);

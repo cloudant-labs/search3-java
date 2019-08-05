@@ -71,18 +71,12 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
     private static final Set<String> ID_SET = Collections.singleton("_id");
 
-    private static final int DEFAULT_N = 25;
-
     private static Set<String> defaultFieldsToLoad(final Set<String> fieldsToLoad) {
         if (fieldsToLoad == null) {
             return ID_SET;
         }
         fieldsToLoad.add("_id");
         return fieldsToLoad;
-    }
-
-    protected static int defaultN(final int n) {
-        return n == 0 ? DEFAULT_N : n;
     }
 
     protected Logger logger;
@@ -124,10 +118,10 @@ public abstract class BaseSearchHandler implements SearchHandler {
         return withSearcher(staleOk, searcher -> {
             final TopDocs topDocs;
             if (sort == null) {
-                topDocs = searcher.searchAfter(after, query, defaultN(limit));
+                topDocs = searcher.searchAfter(after, query, limit);
             } else {
                 try {
-                    topDocs = searcher.searchAfter(after, query, defaultN(limit), sort);
+                    topDocs = searcher.searchAfter(after, query, limit, sort);
                 } catch (final IllegalStateException e) {
                     final String message = e.getMessage();
                     if (message != null && message.contains("(expected=NUMERIC)")) {
