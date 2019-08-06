@@ -39,18 +39,24 @@ public class Main {
         LOGGER = LogManager.getLogger();
 
         final int port = config.getInt("listen.port");
-        final File certChainFile = new File(config.getString("tls.cert_file"));
-        // Key needs to be in PKCS8 format for Netty for some bizarre reason.
-        final File privateKeyFile = new File(config.getString("tls.key_file"));
-        final File clientCAFile = new File(config.getString("tls.ca_file"));
 
         final Search foo = Search.create(config);
+        final NettyServerBuilder builder = NettyServerBuilder.forPort(port).addService(foo);
 
-        final SslContext sslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
+        if (config.getBoolean("tls.enabled", true)) {
+            final File certChainFile = new File(config.getString("tls.cert_file"));
+            // Key needs to be in PKCS8 format for Netty for some bizarre reason.
+            final File privateKeyFile = new File(config.getString("tls.key_file"));
+            final File clientCAFile = new File(config.getString("tls.ca_file"));
+
+            final SslContext sslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
                 .protocols("TLSv1.2", "TLSv1.3")
                 .trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
 
-        final Server server = NettyServerBuilder.forPort(port).addService(foo).sslContext(sslContext).build();
+            builder.sslContext(sslContext);
+        }
+
+        final Server server = builder.build();
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
