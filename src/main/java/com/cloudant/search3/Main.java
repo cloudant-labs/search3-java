@@ -43,7 +43,9 @@ public class Main {
         final Search foo = Search.create(config);
         final NettyServerBuilder builder = NettyServerBuilder.forPort(port).addService(foo);
 
-        if (config.getBoolean("tls.enabled", true)) {
+        final boolean tlsEnabled = config.getBoolean("tls.enabled", true);
+
+        if (tlsEnabled) {
             final File certChainFile = new File(config.getString("tls.cert_file"));
             // Key needs to be in PKCS8 format for Netty for some bizarre reason.
             final File privateKeyFile = new File(config.getString("tls.key_file"));
@@ -66,7 +68,7 @@ public class Main {
         });
 
         server.start();
-        LOGGER.info("Server started on port {}.", port);
+        LOGGER.info("Server started on port {} {} TLS.", port, tlsEnabled ? "with" : "without");
         server.awaitTermination();
         LOGGER.info("Server terminated.");
     }
