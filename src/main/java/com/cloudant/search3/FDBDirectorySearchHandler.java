@@ -129,6 +129,9 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     @Override
     public SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException {
         verifySession(request.getIndex());
+        if (!request.hasSeq() && !request.hasPurgeSeq()) {
+            throw new IllegalArgumentException("Must set at least one seq parameter.");
+        }
         if (request.hasSeq()) {
             this.pendingUpdateSeq = request.getSeq();
         }
@@ -181,6 +184,9 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("doc id is missing.");
         }
+        if (!request.hasSeq() && !request.hasPurgeSeq()) {
+            throw new IllegalArgumentException("Must set at least one seq parameter.");
+        }
 
         final Document doc = toDoc(request);
 
@@ -200,6 +206,9 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         final String id = request.getId();
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("doc id is missing.");
+        }
+        if (!request.hasSeq() && !request.hasPurgeSeq()) {
+            throw new IllegalArgumentException("Must set at least one seq parameter.");
         }
 
         this.writer.deleteDocuments(new Term("_id", id));
