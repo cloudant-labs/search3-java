@@ -47,6 +47,7 @@ public class Main {
         final Search foo = Search.create(config);
 
         final SslContext sslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
+                .protocols("TLSv1.2", "TLSv1.3")
                 .trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
 
         final Server server = NettyServerBuilder.forPort(port).addService(foo).sslContext(sslContext).build();
