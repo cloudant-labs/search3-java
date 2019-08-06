@@ -16,10 +16,15 @@ package com.cloudant.search3;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.SearcherFactory;
 import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.store.Directory;
 
@@ -32,13 +37,25 @@ public final class FDBDirectorySearchHandlerFactory implements SearchHandlerFact
     private static final int PAGE_SIZE = 10_000;
     private static final int TXN_SIZE = 10 * PAGE_SIZE;
 
+    private final Executor executor = Executors.newCachedThreadPool();
+
+    private final SearcherFactory searcherFactory = new SearcherFactory() {
+
+        @Override
+        public IndexSearcher newSearcher(final IndexReader reader, final IndexReader previousReader)
+                throws IOException {
+            return new IndexSearcher(reader, executor);
+        }
+
+    };
+
     @Override
     public SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer) throws IOException {
         final FDBDirectory dir = FDBDirectory.open(db, index, PAGE_SIZE, TXN_SIZE);
         forciblyUnlock(dir);
         final IndexWriterConfig indexWriterConfig = indexWriterConfig(analyzer);
         final IndexWriter writer = new IndexWriter(dir, indexWriterConfig);
-        final SearcherManager manager = new SearcherManager(writer, null);
+        final SearcherManager manager = new SearcherManager(writer, searcherFactory);
         return new FDBDirectorySearchHandler(dir, writer, manager, analyzer);
     }
 
