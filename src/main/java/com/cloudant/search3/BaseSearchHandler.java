@@ -222,7 +222,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
                     final String value = ((BytesRef) field).utf8ToString();
                     result.add(FieldValue.newBuilder().setString(value).build());
                 } else {
-                    logger.error("Unknown order value {} of type {}", field, field.getClass());
+                    logger.error("Unknown order value {} of type {}", field, field == null ? null : field.getClass());
                 }
             }
         } else {
