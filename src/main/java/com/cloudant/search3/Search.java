@@ -301,7 +301,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             responseObserver.onError(fromThrowable(e));
             return;
         } catch (final ParseException e) {
-            LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
             return;
         } catch (final SessionMismatchException e) {
