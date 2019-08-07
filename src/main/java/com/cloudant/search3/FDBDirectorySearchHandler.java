@@ -279,7 +279,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     private String validateGroupField(final String field) throws ParseException {
         final Matcher m = SORT_FIELD_RE.matcher(field);
         if (m.matches()) {
-            final String fieldTypeStr = m.group(3) == null ? "number" : m.group(3);
+            final String fieldTypeStr = m.group(3) == null ? "string" : m.group(3);
             switch (fieldTypeStr) {
             case "string":
                 return m.group(2);
