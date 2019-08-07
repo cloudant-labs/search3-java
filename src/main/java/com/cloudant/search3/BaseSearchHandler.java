@@ -105,13 +105,13 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
     protected final Query parse(final String queryString, final String partition) throws ParseException {
         final Query baseQuery = queryParser.get().parse(queryString);
-        if (partition.length() > 0) {
+        if (partition.isEmpty()) {
+            return baseQuery;
+        } else {
             final BooleanQuery.Builder builder = new BooleanQuery.Builder();
             builder.add(new TermQuery(new Term("_partition", partition)), Occur.MUST);
             builder.add(baseQuery, Occur.MUST);
             return builder.build();
-        } else {
-            return baseQuery;
         }
     }
 
