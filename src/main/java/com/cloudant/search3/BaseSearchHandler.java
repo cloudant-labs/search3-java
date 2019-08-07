@@ -354,7 +354,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
         final DocumentBuilder builder = new DocumentBuilder();
         builder.addString("_id", request.getId(), true);
 
-        if (request.getPartition() != null) {
+        if (!request.getPartition().isEmpty()) {
             builder.addString("_partition", request.getPartition(), false);
         }
 
