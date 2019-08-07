@@ -72,7 +72,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
     private static final SortField INVERSE_FIELD_SCORE = new SortField(null, SortField.Type.SCORE, true);
     private static final SortField INVERSE_FIELD_DOC = new SortField(null, SortField.Type.DOC, true);
 
-    private static final Pattern SORT_FIELD_RE = Pattern.compile("^([-+])?([\\.\\w]+)(?:<(\\w+)>)?$");
+    protected static final Pattern SORT_FIELD_RE = Pattern.compile("^([-+])?([\\.\\w]+)(?:<(\\w+)>)?$");
     private static final String FP = "([-+]?[0-9]+(?:\\.[0-9]+)?)";
     private static final Pattern DISTANCE_RE = Pattern
             .compile("^([-+])?<distance,([\\.\\w]+),([\\.\\w]+),%s,%s,(mi|km)>$".format(FP, FP));

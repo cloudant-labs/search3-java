@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.regex.Matcher;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.lucene.analysis.Analyzer;
@@ -84,7 +85,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         verifySession(request.getIndex());
         final int limit = request.getLimit();
         final boolean staleOk = request.getStale();
-        final String groupBy = request.getGroupBy();
+        final String groupBy = validateGroupField(request.getGroupBy());
         final Sort groupSort = toSort(request);
         final int groupOffset = request.getGroupOffset();
         final int groupLimit = request.getGroupLimit();
@@ -273,6 +274,20 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     protected String getSession() {
         // Demeter? I hardly know her.
         return dir.getUUID().toString();
+    }
+
+    private String validateGroupField(final String field) throws ParseException {
+        final Matcher m = SORT_FIELD_RE.matcher(field);
+        if (m.matches()) {
+            final String fieldTypeStr = m.group(3) == null ? "number" : m.group(3);
+            switch (fieldTypeStr) {
+            case "string":
+                return m.group(2);
+            case "number":
+                throw new ParseException("Group by number not supported. Group by string terms only.");
+            }
+        }
+        throw new ParseException("Unrecognized group_field parameter: " + field);
     }
 
     @Override

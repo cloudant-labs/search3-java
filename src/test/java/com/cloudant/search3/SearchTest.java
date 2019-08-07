@@ -146,7 +146,7 @@ public class SearchTest extends BaseFDBTest {
             {
                 // Find it with a search?
                 final GroupSearchRequest groupSearchRequest = GroupSearchRequest.newBuilder().setIndex(index)
-                        .setGroupBy("category").setQuery("foo:bar").setLimit(25).setGroupLimit(25).build();
+                        .setGroupBy("category<string>").setQuery("foo:bar").setLimit(25).setGroupLimit(25).build();
 
                 final CollectingStreamObserver<GroupSearchResponse> collector = new CollectingStreamObserver<GroupSearchResponse>();
                 search.groupSearch(groupSearchRequest, collector);
