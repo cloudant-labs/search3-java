@@ -369,6 +369,15 @@ public abstract class BaseSearchHandler implements SearchHandler {
             case BOOL:
                 builder.addBoolean(name, value.getBool(), store);
                 break;
+            case INT:
+                builder.addLong(name, value.getInt(), store);
+                break;
+            case LONG:
+                builder.addLong(name, value.getLong(), store);
+                break;
+            case FLOAT:
+                builder.addDouble(name, value.getFloat(), store);
+                break;
             case DOUBLE:
                 builder.addDouble(name, value.getDouble(), store);
                 break;

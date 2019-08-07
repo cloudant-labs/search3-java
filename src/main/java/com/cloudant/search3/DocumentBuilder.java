@@ -20,6 +20,8 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DoubleDocValuesField;
 import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
@@ -51,6 +53,20 @@ public final class DocumentBuilder {
 
     public DocumentBuilder addBoolean(final String name, final boolean value, final boolean store) {
         doc().add(new StringField(name, value ? "true" : "false", toStore(store)));
+        return this;
+    }
+
+    public DocumentBuilder addLong(final String name, final long value, final boolean store) {
+        // For querying.
+        doc().add(new LongPoint(name, value));
+
+        // For sorting and facets.
+        doc().add(new NumericDocValuesField(name, value));
+
+        // For retrieval.
+        if (store) {
+            doc().add(new StoredField(name, value));
+        }
         return this;
     }
 
