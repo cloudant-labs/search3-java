@@ -132,6 +132,7 @@ message FieldValue {
         string string = 4;
         uint32 int = 5;
         uint64 long = 6;
+        bool null = 7;
     }
 }
 

@@ -67,7 +67,7 @@ import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 public abstract class BaseSearchHandler implements SearchHandler {
 
-    private static final FieldValue EMPTY_VALUE = FieldValue.newBuilder().build();
+    private static final FieldValue NULL_VALUE = FieldValue.newBuilder().setNull(true).build();
     private static final ScoreDoc[] EMPTY_SCORE_DOC = new ScoreDoc[0];
     private static final SortField INVERSE_FIELD_SCORE = new SortField(null, SortField.Type.SCORE, true);
     private static final SortField INVERSE_FIELD_DOC = new SortField(null, SortField.Type.DOC, true);
@@ -223,7 +223,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
                     final String value = ((BytesRef) field).utf8ToString();
                     result.add(FieldValue.newBuilder().setString(value).build());
                 } else if (field == null) {
-                    result.add(EMPTY_VALUE);
+                    result.add(NULL_VALUE);
                 } else {
                     throw new IllegalArgumentException("Unknown order value: " + field);
                 }
