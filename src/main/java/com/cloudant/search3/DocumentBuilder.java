@@ -32,22 +32,23 @@ import org.apache.lucene.util.BytesRef;
 
 public final class DocumentBuilder {
 
+    private static final FacetsConfig FACETS_CONFIG = new FacetsConfig();
     private Document document;
 
     public DocumentBuilder() {
     }
 
-    public DocumentBuilder addString(final String name, final String value, final boolean store) {
+    public DocumentBuilder addString(final String name, final String value, final boolean store, final boolean facet) {
         doc().add(new StringField(name, value, toStore(store)));
         doc().add(new SortedDocValuesField(name, new BytesRef(value)));
-        return this;
-    }
-
-    public DocumentBuilder addText(final String name, final String value, final boolean store, final boolean facet) {
-        doc().add(new TextField(name, value, toStore(store)));
         if (facet) {
             doc().add(new SortedSetDocValuesFacetField(name, value));
         }
+        return this;
+    }
+
+    public DocumentBuilder addText(final String name, final String value, final boolean store) {
+        doc().add(new TextField(name, value, toStore(store)));
         return this;
     }
 
@@ -87,8 +88,7 @@ public final class DocumentBuilder {
     public Document build() throws IOException {
         final Document result = doc();
         this.document = null;
-        new FacetsConfig().build(result);
-        return result;
+        return FACETS_CONFIG.build(result);
     }
 
     private Store toStore(final boolean store) {

@@ -16,7 +16,6 @@ package com.cloudant.search3;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -28,23 +27,31 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.facet.FacetResult;
+import org.apache.lucene.facet.Facets;
+import org.apache.lucene.facet.FacetsCollector;
+import org.apache.lucene.facet.LabelAndValue;
+import org.apache.lucene.facet.sortedset.DefaultSortedSetDocValuesReaderState;
+import org.apache.lucene.facet.sortedset.SortedSetDocValuesFacetCounts;
+import org.apache.lucene.facet.sortedset.SortedSetDocValuesReaderState;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.CollectorManager;
+import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.MultiCollector;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.TopDocsCollector;
 import org.apache.lucene.search.TopFieldCollector;
-import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.search.TotalHitCountCollector;
 import org.apache.lucene.search.TotalHits;
@@ -53,6 +60,7 @@ import org.apache.lucene.util.BytesRef;
 
 import com.cloudant.search3.grpc.Search3;
 import com.cloudant.search3.grpc.Search3.Bookmark;
+import com.cloudant.search3.grpc.Search3.Counts;
 import com.cloudant.search3.grpc.Search3.DocumentField;
 import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.FieldValue;
@@ -126,36 +134,41 @@ public abstract class BaseSearchHandler implements SearchHandler {
         final Query query = parse(request.getQuery(), request.getPartition());
 
         return withSearcher(staleOk, searcher -> {
-            final TopDocs topDocs;
+            final Collector collector;
+            final Collector resultsCollector = resultsCollector(searcher, sort, limit, after);
+            final FacetsCollector facetsCollector;
 
-            if (limit == 0) {
-                final CollectorManager<TotalHitCountCollector, TopDocs> manager = totalHitCollector();
-                topDocs = searcher.search(query, manager);
-            } else if (sort == null) {
-                final CollectorManager<TopScoreDocCollector, TopDocs> manager = topScoreDocCollector(
-                        searcher,
-                        after,
-                        limit);
-                topDocs = searcher.search(query, manager);
+            if (request.getCountsCount() > 0) {
+                facetsCollector = new FacetsCollector();
+                collector = MultiCollector.wrap(resultsCollector, facetsCollector);
             } else {
-                final CollectorManager<TopFieldCollector, TopFieldDocs> manager = topFieldDocCollector(
-                        searcher,
-                        (FieldDoc) after,
-                        sort,
-                        limit);
-                try {
-                    topDocs = searcher.search(query, manager);
-                } catch (final IllegalStateException e) {
-                    final String message = e.getMessage();
-                    if (message != null && message.contains("(expected=NUMERIC)")) {
-                        throw new IllegalStateException("cannot sort string field as numeric field", e);
-                    }
-                    if (message != null && message.contains("(expected=SORTED)")) {
-                        throw new IllegalStateException("cannot sort numeric field as string field", e);
-                    }
-                    throw e;
-                }
+                facetsCollector = null;
+                collector = resultsCollector;
             }
+
+            try {
+                searcher.search(query, collector);
+            } catch (final IllegalStateException e) {
+                final String message = e.getMessage();
+                if (message != null && message.contains("(expected=NUMERIC)")) {
+                    throw new IllegalStateException("cannot sort string field as numeric field", e);
+                }
+                if (message != null && message.contains("(expected=SORTED)")) {
+                    throw new IllegalStateException("cannot sort numeric field as string field", e);
+                }
+                throw e;
+            }
+
+            final TopDocs topDocs;
+            if (resultsCollector instanceof TotalHitCountCollector) {
+                final int count = ((TotalHitCountCollector) resultsCollector).getTotalHits();
+                topDocs = new TopDocs(new TotalHits(count, Relation.EQUAL_TO), EMPTY_SCORE_DOC);
+            } else if (resultsCollector instanceof TopDocsCollector) {
+                topDocs = ((TopDocsCollector<?>) resultsCollector).topDocs();
+            } else {
+                throw new Error();
+            }
+
             final SearchResponse.Builder responseBuilder = SearchResponse.newBuilder();
             responseBuilder.setSession(getSession());
             responseBuilder.setMatches(topDocs.totalHits.value);
@@ -174,6 +187,21 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 addFieldsToHit(hitBuilder, doc);
                 responseBuilder.addHits(hitBuilder);
             }
+
+            if (request.getCountsCount() > 0) {
+                final SortedSetDocValuesReaderState state = new DefaultSortedSetDocValuesReaderState(
+                        searcher.getIndexReader());
+                final Facets facets = new SortedSetDocValuesFacetCounts(state, facetsCollector);
+                for (final String count : request.getCountsList()) {
+                    final Counts.Builder countsBuilder = Counts.newBuilder();
+                    final FacetResult facetResult = facets.getTopChildren(1000, count);
+                    for (final LabelAndValue lv : facetResult.labelValues) {
+                        countsBuilder.putCounts(lv.label, lv.value.intValue());
+                    }
+                    responseBuilder.putCounts(count, countsBuilder.build());
+                }
+            }
+
             return responseBuilder.build();
         });
     }
@@ -352,10 +380,10 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
     protected static Document toDoc(final DocumentUpdateRequest request) throws IOException {
         final DocumentBuilder builder = new DocumentBuilder();
-        builder.addString("_id", request.getId(), true);
+        builder.addString("_id", request.getId(), true, false);
 
         if (!request.getPartition().isEmpty()) {
-            builder.addString("_partition", request.getPartition(), false);
+            builder.addString("_partition", request.getPartition(), false, false);
         }
 
         for (final DocumentField field : request.getFieldsList()) {
@@ -383,9 +411,9 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 break;
             case STRING:
                 if (analyzed) {
-                    builder.addText(name, value.getString(), store, facet);
+                    builder.addText(name, value.getString(), store);
                 } else {
-                    builder.addString(name, value.getString(), store);
+                    builder.addString(name, value.getString(), store, facet);
                 }
                 break;
             default:
@@ -410,87 +438,19 @@ public abstract class BaseSearchHandler implements SearchHandler {
         throw new SessionMismatchException("session mismatch");
     }
 
-    private CollectorManager<TotalHitCountCollector, TopDocs> totalHitCollector() {
-        return new CollectorManager<TotalHitCountCollector, TopDocs>() {
-
-            @Override
-            public TotalHitCountCollector newCollector() throws IOException {
-                return new TotalHitCountCollector();
-            }
-
-            @Override
-            public TopDocs reduce(Collection<TotalHitCountCollector> collectors) throws IOException {
-                int count = 0;
-                for (TotalHitCountCollector collector : collectors) {
-                    count += collector.getTotalHits();
-                }
-                return new TopDocs(new TotalHits(count, Relation.EQUAL_TO), EMPTY_SCORE_DOC);
-            }
-        };
-    }
-
-    private CollectorManager<TopScoreDocCollector, TopDocs> topScoreDocCollector(
+    private Collector resultsCollector(
             final IndexSearcher searcher,
-            final ScoreDoc after,
-            final int numHits) {
-        final int limit = Math.max(1, searcher.getIndexReader().maxDoc());
-        if (after != null && after.doc >= limit) {
-            throw new IllegalArgumentException("after.doc exceeds the number of documents in the reader: after.doc="
-                    + after.doc + " limit=" + limit);
-        }
-
-        final int cappedNumHits = Math.min(numHits, limit);
-
-        return new CollectorManager<TopScoreDocCollector, TopDocs>() {
-
-            @Override
-            public TopScoreDocCollector newCollector() throws IOException {
-                return TopScoreDocCollector.create(cappedNumHits, after, Integer.MAX_VALUE);
-            }
-
-            @Override
-            public TopDocs reduce(Collection<TopScoreDocCollector> collectors) throws IOException {
-                final TopDocs[] topDocs = new TopDocs[collectors.size()];
-                int i = 0;
-                for (TopScoreDocCollector collector : collectors) {
-                    topDocs[i++] = collector.topDocs();
-                }
-                return TopDocs.merge(0, cappedNumHits, topDocs, true);
-            }
-
-        };
-    }
-
-    private CollectorManager<TopFieldCollector, TopFieldDocs> topFieldDocCollector(
-            final IndexSearcher searcher,
-            final FieldDoc after,
             final Sort sort,
-            final int numHits) throws IOException {
-        final int limit = Math.max(1, searcher.getIndexReader().maxDoc());
-        if (after != null && after.doc >= limit) {
-            throw new IllegalArgumentException("after.doc exceeds the number of documents in the reader: after.doc="
-                    + after.doc + " limit=" + limit);
+            final int limit,
+            final ScoreDoc after) 
+            throws IOException {
+        if (limit == 0) {
+            return new TotalHitCountCollector();
+        } else if (sort != null) {
+            final Sort rewrittenSort = sort.rewrite(searcher);
+            return TopFieldCollector.create(sort, limit, (FieldDoc) after, Integer.MAX_VALUE);
+        } else {
+            return TopScoreDocCollector.create(limit, after, Integer.MAX_VALUE);
         }
-        final int cappedNumHits = Math.min(numHits, limit);
-        final Sort rewrittenSort = sort.rewrite(searcher);
-        return new CollectorManager<TopFieldCollector, TopFieldDocs>() {
-
-            @Override
-            public TopFieldCollector newCollector() throws IOException {
-                return TopFieldCollector.create(rewrittenSort, cappedNumHits, after, Integer.MAX_VALUE);
-            }
-
-            @Override
-            public TopFieldDocs reduce(Collection<TopFieldCollector> collectors) throws IOException {
-                final TopFieldDocs[] topDocs = new TopFieldDocs[collectors.size()];
-                int i = 0;
-                for (TopFieldCollector collector : collectors) {
-                    topDocs[i++] = collector.topDocs();
-                }
-                return TopDocs.merge(rewrittenSort, 0, cappedNumHits, topDocs, true);
-            }
-
-        };
     }
-
 }

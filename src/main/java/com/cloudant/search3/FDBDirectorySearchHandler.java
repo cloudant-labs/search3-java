@@ -110,7 +110,9 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             for (final GroupDocs<BytesRef> group : result.groups) {
                 final Group.Builder groupBuilder = Group.newBuilder();
                 groupBuilder.setMatches(group.totalHits.value);
-                groupBuilder.setBy(group.groupValue.utf8ToString());
+                if (group.groupValue != null) {
+                    groupBuilder.setBy(group.groupValue.utf8ToString());
+                }
                 for (final ScoreDoc scoreDoc : group.scoreDocs) {
                     final Document doc = searcher.doc(scoreDoc.doc);
                     final Hit.Builder hitBuilder = Hit.newBuilder();
@@ -259,7 +261,8 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
     }
 
     @Override
-    protected <T> T withSearcher(final boolean staleOk, final IOFunction<IndexSearcher, T> f) throws IOException {
+    protected <T> T withSearcher(final boolean staleOk, final IOFunction<IndexSearcher, T> f)
+            throws IOException {
         if (!staleOk) {
             manager.maybeRefreshBlocking();
         }

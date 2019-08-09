@@ -79,6 +79,11 @@ message SearchResponse {
     Bookmark bookmark = 2;
     uint64 matches = 3;
     repeated Hit hits = 4;
+    map<string, Counts> counts = 5;
+}
+
+message Counts {
+    map<string, uint32> counts = 1;
 }
 
 message GroupSearchRequest {
