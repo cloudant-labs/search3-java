@@ -411,7 +411,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 break;
             case STRING:
                 if (analyzed) {
-                    builder.addText(name, value.getString(), store);
+                    builder.addText(name, value.getString(), store, facet);
                 } else {
                     builder.addString(name, value.getString(), store, facet);
                 }

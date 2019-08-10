@@ -47,8 +47,11 @@ public final class DocumentBuilder {
         return this;
     }
 
-    public DocumentBuilder addText(final String name, final String value, final boolean store) {
+    public DocumentBuilder addText(final String name, final String value, final boolean store, final boolean facet) {
         doc().add(new TextField(name, value, toStore(store)));
+        if (facet) {
+            doc().add(new SortedSetDocValuesFacetField(name, value));
+        }
         return this;
     }
 
