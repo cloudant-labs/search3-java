@@ -69,7 +69,7 @@ message SearchRequest {
     Sort sort = 6;
     string partition = 7;
     repeated string counts = 8;
-    string ranges = 9;
+    map<string, Ranges> ranges = 9;
     string drilldown = 10;
     repeated string include_fields = 11;
 }
@@ -80,10 +80,15 @@ message SearchResponse {
     uint64 matches = 3;
     repeated Hit hits = 4;
     map<string, Counts> counts = 5;
+    map<string, Counts> ranges = 6;
 }
 
 message Counts {
     map<string, uint32> counts = 1;
+}
+
+message Ranges {
+    map<string, string> ranges = 1;
 }
 
 message GroupSearchRequest {
