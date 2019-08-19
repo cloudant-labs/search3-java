@@ -123,17 +123,18 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            index(search, update(index, "foobar", "foo", "bar", false, true));
+            index(search, update(index, "doc1", "foo", "bar", false, true));
+            index(search, update(index, "doc2", "foo", "bar", false, true));
 
             // Find it with a search?
-            final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar")
+            final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("_id:d*")
                     .addCounts("foo").setLimit(25).build();
 
             final SearchResponse searchResponse = search(search, searchRequest);
-            assertEquals(1, searchResponse.getMatches());
-            assertEquals("foobar", searchResponse.getHits(0).getId());
+            assertEquals(2, searchResponse.getMatches());
+            assertEquals("doc1", searchResponse.getHits(0).getId());
             assertTrue(searchResponse.containsCounts("foo"));
-            assertEquals(1, searchResponse.getCountsOrThrow("foo").getCountsOrDefault("bar", 0));
+            assertEquals(2, searchResponse.getCountsOrThrow("foo").getCountsOrDefault("bar", 0));
         }
     }
 
