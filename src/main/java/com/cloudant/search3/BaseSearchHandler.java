@@ -448,7 +448,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
             return new TotalHitCountCollector();
         } else if (sort != null) {
             final Sort rewrittenSort = sort.rewrite(searcher);
-            return TopFieldCollector.create(sort, limit, (FieldDoc) after, Integer.MAX_VALUE);
+            return TopFieldCollector.create(rewrittenSort, limit, (FieldDoc) after, Integer.MAX_VALUE);
         } else {
             return TopScoreDocCollector.create(limit, after, Integer.MAX_VALUE);
         }
