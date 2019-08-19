@@ -39,6 +39,7 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
+import com.cloudant.search3.grpc.Search3.Ranges;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
@@ -118,7 +119,7 @@ public class SearchTest extends BaseFDBTest {
     }
 
     @Test
-    public void facetSearch() throws Exception {
+    public void countFacetSearch() throws Exception {
         try (final Search search = Search.create(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
@@ -135,6 +136,29 @@ public class SearchTest extends BaseFDBTest {
             assertEquals("doc1", searchResponse.getHits(0).getId());
             assertTrue(searchResponse.containsCounts("foo"));
             assertEquals(2, searchResponse.getCountsOrThrow("foo").getCountsOrDefault("bar", 0));
+        }
+    }
+
+    @Test
+    public void rangeFacetSearch() throws Exception {
+        try (final Search search = Search.create(config)) {
+            final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
+
+            // Index something.
+            index(search, update(index, "doc1", "foo", 1.0, false, true));
+            index(search, update(index, "doc2", "foo", 2.0, false, true));
+
+            final Ranges ranges = Ranges.newBuilder().putRanges("all", "[1 TO 2]").build();
+
+            // Find it with a search?
+            final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("_id:d*")
+                    .putRanges("foo", ranges).setLimit(25).build();
+
+            final SearchResponse searchResponse = search(search, searchRequest);
+            assertEquals(2, searchResponse.getMatches());
+            assertEquals("doc1", searchResponse.getHits(0).getId());
+            assertTrue(searchResponse.containsRanges("foo"));
+            assertEquals(2, searchResponse.getRangesOrThrow("foo").getCountsOrDefault("all", 0));
         }
     }
 
@@ -200,7 +224,7 @@ public class SearchTest extends BaseFDBTest {
             final Index index,
             final String id,
             final String name,
-            final String value,
+            final Object value,
             final boolean analyzed,
             final boolean facet) {
         final DocumentUpdateRequest.Builder builder = DocumentUpdateRequest.newBuilder();
@@ -227,17 +251,19 @@ public class SearchTest extends BaseFDBTest {
         return collector.lastValue;
     }
 
-    private DocumentField field(final String name, final String value, final boolean analyzed, final boolean facet) {
+    private DocumentField field(final String name, final Object value, final boolean analyzed, final boolean facet) {
         return DocumentField.newBuilder().setName(name).setValue(fieldValue(value)).setAnalyzed(analyzed)
                 .setStore(true).setFacet(facet).build();
     }
 
-    private FieldValue.Builder fieldValue(final double value) {
-        return FieldValue.newBuilder().setDouble(value);
-    }
-
-    private FieldValue.Builder fieldValue(final String value) {
-        return FieldValue.newBuilder().setString(value);
+    private FieldValue.Builder fieldValue(final Object value) {
+        if (value instanceof String) {
+            return FieldValue.newBuilder().setString((String) value);
+        }
+        if (value instanceof Double) {
+            return FieldValue.newBuilder().setDouble((double) value);
+        }
+        throw new IllegalArgumentException(value + " not recognised as field value.");
     }
 
     private UpdateSeq nextSeq() {

@@ -20,6 +20,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,6 +35,8 @@ import org.apache.lucene.facet.Facets;
 import org.apache.lucene.facet.FacetsCollector;
 import org.apache.lucene.facet.FacetsCollectorManager;
 import org.apache.lucene.facet.LabelAndValue;
+import org.apache.lucene.facet.range.DoubleRange;
+import org.apache.lucene.facet.range.DoubleRangeFacetCounts;
 import org.apache.lucene.facet.sortedset.DefaultSortedSetDocValuesReaderState;
 import org.apache.lucene.facet.sortedset.SortedSetDocValuesFacetCounts;
 import org.apache.lucene.facet.sortedset.SortedSetDocValuesReaderState;
@@ -71,6 +75,7 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.HitField;
 import com.cloudant.search3.grpc.Search3.Index;
+import com.cloudant.search3.grpc.Search3.Ranges;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
@@ -87,6 +92,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
     private static final String FP = "([-+]?[0-9]+(?:\\.[0-9]+)?)";
     private static final Pattern DISTANCE_RE = Pattern
             .compile("^([-+])?<distance,([\\.\\w]+),([\\.\\w]+),%s,%s,(mi|km)>$".format(FP, FP));
+    private static final Pattern RANGE_RE = Pattern.compile("([{\\[])(\\w+) TO (\\w+)([}\\]])");
 
     private static final Logger LOGGER = LogManager.getLogger();
 
@@ -146,7 +152,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
             final FacetsCollectorManager facetsManager;
             final FacetsCollector facetsCollector;
 
-            if (request.getCountsCount() > 0) {
+            if (request.getCountsCount() > 0 || request.getRangesCount() > 0) {
                 facetsManager = new FacetsCollectorManager();
                 manager = new MultiCollectorManager(resultsManager, facetsManager);
             } else {
@@ -199,6 +205,37 @@ public abstract class BaseSearchHandler implements SearchHandler {
                         countsBuilder.putCounts(lv.label, lv.value.intValue());
                     }
                     responseBuilder.putCounts(count, countsBuilder.build());
+                }
+            }
+
+            if (request.getRangesCount() > 0) {
+                for (final Entry<String, Ranges> entry : request.getRangesMap().entrySet()) {
+                    final Map<String, String> map = entry.getValue().getRangesMap();
+                    final DoubleRange[] ranges = new DoubleRange[map.size()];
+                    int i = 0;
+                    for (final Entry<String, String> range : map.entrySet()) {
+                        final Matcher m = RANGE_RE.matcher(range.getValue());
+                        if (!m.matches()) {
+                            try {
+                                throw new ParseException(
+                                        range.getValue() + " was not a well-formed range specification");
+                            } catch (final ParseException e) {
+                                throw new IllegalArgumentException(e);
+                            }
+                        }
+                        final boolean minInclusive = m.group(1).equals("[");
+                        final double minIn = Double.parseDouble(m.group(2));
+                        final double maxIn = Double.parseDouble(m.group(3));
+                        final boolean maxInclusive = m.group(4).equals("]");
+                        ranges[i++] = new DoubleRange(range.getKey(), minIn, minInclusive, maxIn, maxInclusive);
+                    }
+                    final Facets facets = new DoubleRangeFacetCounts(entry.getKey(), facetsCollector, ranges);
+                    final FacetResult facetResult = facets.getTopChildren(map.size(), entry.getKey());
+                    final Counts.Builder countsBuilder = Counts.newBuilder();
+                    for (final LabelAndValue lv : facetResult.labelValues) {
+                        countsBuilder.putCounts(lv.label, lv.value.intValue());
+                    }
+                    responseBuilder.putRanges(entry.getKey(), countsBuilder.build());
                 }
             }
 
