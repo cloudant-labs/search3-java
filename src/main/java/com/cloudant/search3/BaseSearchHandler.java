@@ -92,7 +92,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
     private static final String FP = "([-+]?[0-9]+(?:\\.[0-9]+)?)";
     private static final Pattern DISTANCE_RE = Pattern
             .compile("^([-+])?<distance,([\\.\\w]+),([\\.\\w]+),%s,%s,(mi|km)>$".format(FP, FP));
-    private static final Pattern RANGE_RE = Pattern.compile("([{\\[])(\\w+) TO (\\w+)([}\\]])");
+    private static final Pattern RANGE_RE = Pattern.compile("([{\\[])(\\S+) TO (\\S+)([}\\]])");
 
     private static final Logger LOGGER = LogManager.getLogger();
 
