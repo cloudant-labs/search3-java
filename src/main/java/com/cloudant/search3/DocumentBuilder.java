@@ -32,7 +32,7 @@ import org.apache.lucene.util.BytesRef;
 
 public final class DocumentBuilder {
 
-    private static final FacetsConfig FACETS_CONFIG = new FacetsConfig();
+    static final FacetsConfig FACETS_CONFIG = new FacetsConfig();
     private Document document;
 
     public DocumentBuilder() {

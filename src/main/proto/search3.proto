@@ -70,7 +70,7 @@ message SearchRequest {
     string partition = 7;
     repeated string counts = 8;
     map<string, Ranges> ranges = 9;
-    string drilldown = 10;
+    repeated Path drilldown = 10;
     repeated string include_fields = 11;
 }
 
@@ -89,6 +89,10 @@ message Counts {
 
 message Ranges {
     map<string, string> ranges = 1;
+}
+
+message Path {
+    repeated string parts = 1;
 }
 
 message GroupSearchRequest {

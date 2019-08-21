@@ -30,6 +30,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.facet.DrillDownQuery;
 import org.apache.lucene.facet.FacetResult;
 import org.apache.lucene.facet.Facets;
 import org.apache.lucene.facet.FacetsCollector;
@@ -75,6 +76,7 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.HitField;
 import com.cloudant.search3.grpc.Search3.Index;
+import com.cloudant.search3.grpc.Search3.Path;
 import com.cloudant.search3.grpc.Search3.Ranges;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
@@ -83,6 +85,7 @@ import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
 public abstract class BaseSearchHandler implements SearchHandler {
 
+    private static final String[] EMPTY_STRING_ARR = new String[0];
     private static final FieldValue NULL_VALUE = FieldValue.newBuilder().setNull(true).build();
     private static final ScoreDoc[] EMPTY_SCORE_DOC = new ScoreDoc[0];
     private static final SortField INVERSE_FIELD_SCORE = new SortField(null, SortField.Type.SCORE, true);
@@ -120,6 +123,19 @@ public abstract class BaseSearchHandler implements SearchHandler {
         };
     }
 
+    private final Query parse(final SearchRequest request) throws ParseException {
+        final Query baseQuery = parse(request.getQuery(), request.getPartition());
+        if (request.getDrilldownCount() == 0) {
+            return baseQuery;
+        }
+        final DrillDownQuery drilldownQuery = new DrillDownQuery(DocumentBuilder.FACETS_CONFIG, baseQuery);
+        for (final Path path : request.getDrilldownList()) {
+            final List<String> parts = path.getPartsList();
+            drilldownQuery.add(parts.get(0), parts.subList(1, parts.size()).toArray(EMPTY_STRING_ARR));
+        }
+        return drilldownQuery;
+    }
+
     protected final Query parse(final String queryString, final String partition) throws ParseException {
         final Query baseQuery = queryParser.get().parse(queryString);
         if (partition.isEmpty()) {
@@ -140,7 +156,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
         final boolean staleOk = request.getStale();
         final Sort sort = toSort(request);
         final ScoreDoc after = toAfter(request, sort);
-        final Query query = parse(request.getQuery(), request.getPartition());
+        final Query query = parse(request);
 
         return withSearcher(staleOk, searcher -> {
             final MultiCollectorManager manager;

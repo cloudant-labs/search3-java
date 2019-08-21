@@ -39,6 +39,7 @@ import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
+import com.cloudant.search3.grpc.Search3.Path;
 import com.cloudant.search3.grpc.Search3.Ranges;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
@@ -159,6 +160,28 @@ public class SearchTest extends BaseFDBTest {
             assertEquals("doc1", searchResponse.getHits(0).getId());
             assertTrue(searchResponse.containsRanges("foo"));
             assertEquals(2, searchResponse.getRangesOrThrow("foo").getCountsOrDefault("all", 0));
+        }
+    }
+
+    @Test
+    public void drilldownSearch() throws Exception {
+        try (final Search search = Search.create(config)) {
+            final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
+
+            // Index something.
+            index(search, update(index, "doc1", "foo", "bar", false, true));
+            index(search, update(index, "doc2", "foo", "baz", false, true));
+
+            final Path path = Path.newBuilder().addParts("foo").addParts("baz").build();
+
+            // Find it with a search?
+            final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("_id:d*")
+                    .addDrilldown(path)
+                    .setLimit(25).build();
+
+            final SearchResponse searchResponse = search(search, searchRequest);
+            assertEquals(1, searchResponse.getMatches());
+            assertEquals("doc2", searchResponse.getHits(0).getId());
         }
     }
 
