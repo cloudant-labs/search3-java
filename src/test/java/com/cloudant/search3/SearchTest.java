@@ -186,6 +186,42 @@ public class SearchTest extends BaseFDBTest {
     }
 
     @Test
+    public void sortByDistanceSearch() throws Exception {
+        try (final Search search = Search.create(config)) {
+            final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
+
+            // Index something.
+            index(search, update(index, "foo", field("lon", 0.5, true, false), field("lat", 57.15, true, false)));
+            index(search, update(index, "bar", field("lon", 10.0, true, false), field("lat", 57.15, true, false)));
+            index(search, update(index, "zzz", field("lon", 3.0, true, false), field("lat", 57.15, true, false)));
+
+            {
+                final Sort sort = Sort.newBuilder().addFields("<distance,lon,lat,0.2,57.15,km>").build();
+                final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("*:*")
+                        .setSort(sort).setLimit(25).build();
+
+                final SearchResponse searchResponse = search(search, searchRequest);
+                assertEquals(3, searchResponse.getMatches());
+                assertEquals("foo", searchResponse.getHits(0).getId());
+                assertEquals("zzz", searchResponse.getHits(1).getId());
+                assertEquals("bar", searchResponse.getHits(2).getId());
+            }
+
+            {
+                final Sort sort = Sort.newBuilder().addFields("<distance,lon,lat,12,57.15,km>").build();
+                final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("*:*")
+                        .setSort(sort).setLimit(25).build();
+
+                final SearchResponse searchResponse = search(search, searchRequest);
+                assertEquals(3, searchResponse.getMatches());
+                assertEquals("bar", searchResponse.getHits(0).getId());
+                assertEquals("zzz", searchResponse.getHits(1).getId());
+                assertEquals("foo", searchResponse.getHits(2).getId());
+            }
+        }
+    }
+
+    @Test
     public void sortSearch() throws Exception {
         try (final Search search = Search.create(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
@@ -250,11 +286,17 @@ public class SearchTest extends BaseFDBTest {
             final Object value,
             final boolean analyzed,
             final boolean facet) {
+        return update(index, id, field(name, value, analyzed, facet));
+    }
+
+    private DocumentUpdateRequest update(final Index index, final String id, final DocumentField... fields) {
         final DocumentUpdateRequest.Builder builder = DocumentUpdateRequest.newBuilder();
         builder.setIndex(index);
         builder.setId(id);
         builder.setSeq(nextSeq());
-        builder.addFields(field(name, value, analyzed, facet));
+        for (final DocumentField field : fields) {
+            builder.addFields(field);
+        }
         return builder.build();
     }
 

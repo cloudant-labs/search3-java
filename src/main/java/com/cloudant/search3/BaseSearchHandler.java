@@ -65,6 +65,10 @@ import org.apache.lucene.search.TotalHitCountCollector;
 import org.apache.lucene.search.TotalHits;
 import org.apache.lucene.search.TotalHits.Relation;
 import org.apache.lucene.util.BytesRef;
+import org.locationtech.spatial4j.context.SpatialContext;
+import org.locationtech.spatial4j.distance.DistanceUtils;
+import org.locationtech.spatial4j.shape.Point;
+import org.locationtech.spatial4j.shape.impl.PointImpl;
 
 import com.cloudant.search3.grpc.Search3;
 import com.cloudant.search3.grpc.Search3.Bookmark;
@@ -94,7 +98,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
     protected static final Pattern SORT_FIELD_RE = Pattern.compile("^([-+])?([\\.\\w]+)(?:<(\\w+)>)?$");
     private static final String FP = "([-+]?[0-9]+(?:\\.[0-9]+)?)";
     private static final Pattern DISTANCE_RE = Pattern
-            .compile("^([-+])?<distance,([\\.\\w]+),([\\.\\w]+),%s,%s,(mi|km)>$".format(FP, FP));
+            .compile(String.format("^([-+])?<distance,([\\.\\w]+),([\\.\\w]+),%s,%s,(mi|km)>$", FP, FP));
     private static final Pattern RANGE_RE = Pattern.compile("([{\\[])(\\S+) TO (\\S+)([}\\]])");
 
     private static final Logger LOGGER = LogManager.getLogger();
@@ -361,7 +365,28 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
             Matcher m = DISTANCE_RE.matcher(sort.getFields(i));
             if (m.matches()) {
-                throw new ParseException("sort by distance not yet supported.");
+                final boolean reverse = "-".equals(m.group(1));
+                final String lonField = m.group(2);
+                final String latField = m.group(3);
+                final double lon = Double.parseDouble(m.group(4));
+                final double lat = Double.parseDouble(m.group(5));
+                final String units = m.group(6);
+                final double radius;
+                switch (units) {
+                case "mi":
+                    radius = DistanceUtils.EARTH_EQUATORIAL_RADIUS_MI;
+                    break;
+                case "km":
+                default:
+                    radius = DistanceUtils.EARTH_EQUATORIAL_RADIUS_KM;
+                    break;
+                }
+                final double degToKm = DistanceUtils.degrees2Dist(1, radius);
+
+                final SpatialContext ctx = SpatialContext.GEO;
+                final Point from = new PointImpl(lon, lat, ctx);
+                final DistanceValueSource source = new DistanceValueSource(ctx, lonField, latField, degToKm, from);
+                sortFields[i] = source.getSortField(reverse);
             }
 
             m = SORT_FIELD_RE.matcher(sort.getFields(i));
