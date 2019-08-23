@@ -49,7 +49,7 @@ import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
-import io.prometheus.client.Summary;
+import io.prometheus.client.Histogram;
 
 /**
  * Provides all services for a specific index using an FDBDirectory; should be
@@ -103,7 +103,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
         return withSearcher(staleOk, searcher -> {
             final TopGroups<BytesRef> result;
-            final Summary.Timer requestTimer = SEARCH_LATENCY.startTimer();
+            final Histogram.Timer requestTimer = LATENCIES.labels("searches").startTimer();
             try {
                 result = groupingSearch.search(searcher, query, groupOffset, groupLimit);
             } finally {
@@ -199,7 +199,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
         final Document doc = toDoc(request);
 
-        final Summary.Timer requestTimer = UPDATE_LATENCY.startTimer();
+        final Histogram.Timer requestTimer = LATENCIES.labels("updates").startTimer();
         try {
             this.writer.updateDocument(new Term("_id", id), doc);
         } finally {
@@ -225,7 +225,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             throw new IllegalArgumentException("Must set at least one seq parameter.");
         }
 
-        final Summary.Timer requestTimer = DELETE_LATENCY.startTimer();
+        final Histogram.Timer requestTimer = LATENCIES.labels("deletes").startTimer();
         try {
             this.writer.deleteDocuments(new Term("_id", id));
         } finally {
@@ -255,7 +255,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
                     commitData.put("purge_seq", committingPurgeSeq.getSeq());
                 }
                 this.writer.setLiveCommitData(commitData.entrySet());
-                final Summary.Timer requestTimer = COMMIT_LATENCY.startTimer();
+                final Histogram.Timer requestTimer = LATENCIES.labels("commits").startTimer();
                 try {
                     this.writer.commit();
                 } finally {
