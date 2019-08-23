@@ -31,6 +31,7 @@
     <lucene-version>8.2.0</lucene-version>
     <grpc-version>1.21.0</grpc-version>
     <log4j-version>2.12.0</log4j-version>
+    <prometheus-version>0.6.0</prometheus-version>
   </properties>
 
   <dependencies>
@@ -141,6 +142,23 @@
       <artifactId>javax.annotation-api</artifactId>
       <version>1.2</version>
       <scope>provided</scope> <!-- not needed at runtime -->
+    </dependency>
+
+    <!-- Prometheus (metrics) -->
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>simpleclient</artifactId>
+      <version>${prometheus-version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>simpleclient_common</artifactId>
+      <version>${prometheus-version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>simpleclient_hotspot</artifactId>
+      <version>${prometheus-version}</version>
     </dependency>
 
     <dependency>

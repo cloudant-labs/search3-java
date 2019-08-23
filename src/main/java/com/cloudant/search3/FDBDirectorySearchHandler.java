@@ -49,6 +49,8 @@ import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
+import io.prometheus.client.Summary;
+
 /**
  * Provides all services for a specific index using an FDBDirectory; should be
  * cached.
@@ -100,8 +102,13 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         groupingSearch.setGroupDocsLimit(limit);
 
         return withSearcher(staleOk, searcher -> {
-            final TopGroups<BytesRef> result = groupingSearch
-                    .search(searcher, query, groupOffset, groupLimit);
+            final TopGroups<BytesRef> result;
+            final Summary.Timer requestTimer = SEARCH_LATENCY.startTimer();
+            try {
+                result = groupingSearch.search(searcher, query, groupOffset, groupLimit);
+            } finally {
+                requestTimer.observeDuration();
+            }
             final GroupSearchResponse.Builder responseBuilder = GroupSearchResponse.newBuilder();
             responseBuilder.setSession(getSession());
             responseBuilder.setMatches(result.totalHitCount);
@@ -126,7 +133,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
             return responseBuilder.build();
         });
-
     }
 
     @Override
@@ -193,7 +199,12 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
         final Document doc = toDoc(request);
 
-        this.writer.updateDocument(new Term("_id", id), doc);
+        final Summary.Timer requestTimer = UPDATE_LATENCY.startTimer();
+        try {
+            this.writer.updateDocument(new Term("_id", id), doc);
+        } finally {
+            requestTimer.observeDuration();
+        }
         if (request.hasSeq()) {
             this.pendingUpdateSeq = request.getSeq();
         }
@@ -214,7 +225,12 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             throw new IllegalArgumentException("Must set at least one seq parameter.");
         }
 
-        this.writer.deleteDocuments(new Term("_id", id));
+        final Summary.Timer requestTimer = DELETE_LATENCY.startTimer();
+        try {
+            this.writer.deleteDocuments(new Term("_id", id));
+        } finally {
+            requestTimer.observeDuration();
+        }
         if (request.hasSeq()) {
             this.pendingUpdateSeq = request.getSeq();
         }
@@ -222,7 +238,8 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
             this.pendingPurgeSeq = request.getPurgeSeq();
         }
         return sessionResponse();
-    }    
+
+    }
 
     @Override
     public void commit() throws IOException {
@@ -238,7 +255,12 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
                     commitData.put("purge_seq", committingPurgeSeq.getSeq());
                 }
                 this.writer.setLiveCommitData(commitData.entrySet());
-                this.writer.commit();
+                final Summary.Timer requestTimer = COMMIT_LATENCY.startTimer();
+                try {
+                    this.writer.commit();
+                } finally {
+                    requestTimer.observeDuration();
+                }
                 this.pendingUpdateSeq = null;
                 this.pendingPurgeSeq = null;
                 logger.info("committed: {}.", commitData);

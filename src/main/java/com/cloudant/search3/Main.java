@@ -38,23 +38,33 @@ public class Main {
         System.setProperty("java.util.logging.manager", "org.apache.logging.log4j.jul.LogManager");
         LOGGER = LogManager.getLogger();
 
-        final int port = config.getInt("listen.port");
-
-        final Search foo = Search.create(config);
-        final NettyServerBuilder builder = NettyServerBuilder.forPort(port).addService(foo);
-
         final boolean tlsEnabled = config.getBoolean("tls.enabled", true);
 
+        final SslContext sslContext;
         if (tlsEnabled) {
             final File certChainFile = new File(config.getString("tls.cert_file"));
             // Key needs to be in PKCS8 format for Netty for some bizarre reason.
             final File privateKeyFile = new File(config.getString("tls.key_file"));
             final File clientCAFile = new File(config.getString("tls.ca_file"));
 
-            final SslContext sslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
-                .protocols("TLSv1.2", "TLSv1.3")
-                .trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
+            sslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
+                    .protocols("TLSv1.2", "TLSv1.3").trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
+        } else {
+            sslContext = null;
+        }
 
+        // Start metrics first.
+        final int metricsPort = config.getInt("metrics.port", 1234);
+        final MetricsServer metricsServer = new MetricsServer(metricsPort, sslContext);
+        LOGGER.info("Metrics Server started on port {} {} TLS.", metricsPort, tlsEnabled ? "with" : "without");
+        metricsServer.start();
+
+        final int grpcPort = config.getInt("listen.port");
+
+        final Search foo = Search.create(config);
+        final NettyServerBuilder builder = NettyServerBuilder.forPort(grpcPort).addService(foo);
+
+        if (tlsEnabled) {
             builder.sslContext(sslContext);
         }
 
@@ -68,9 +78,11 @@ public class Main {
         });
 
         server.start();
-        LOGGER.info("Server started on port {} {} TLS.", port, tlsEnabled ? "with" : "without");
+        LOGGER.info("Server started on port {} {} TLS.", grpcPort, tlsEnabled ? "with" : "without");
         server.awaitTermination();
         LOGGER.info("Server terminated.");
+
+        metricsServer.stop();
     }
 
 }

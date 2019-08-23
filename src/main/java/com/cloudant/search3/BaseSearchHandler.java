@@ -87,6 +87,8 @@ import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 
+import io.prometheus.client.Summary;
+
 public abstract class BaseSearchHandler implements SearchHandler {
 
     private static final String[] EMPTY_STRING_ARR = new String[0];
@@ -112,6 +114,11 @@ public abstract class BaseSearchHandler implements SearchHandler {
         fieldsToLoad.add("_id");
         return fieldsToLoad;
     }
+
+    protected static final Summary SEARCH_LATENCY = latency("searches");
+    protected static final Summary UPDATE_LATENCY = latency("updates");
+    protected static final Summary DELETE_LATENCY = latency("deletes");
+    protected static final Summary COMMIT_LATENCY = latency("commits");
 
     protected Logger logger;
     private final ThreadLocal<QueryParser> queryParser;
@@ -181,7 +188,13 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
             final TopDocs topDocs;
             try {
-                final Object[] reduces = searcher.search(query, manager);
+                final Object[] reduces;
+                final Summary.Timer requestTimer = SEARCH_LATENCY.startTimer();
+                try {
+                    reduces = searcher.search(query, manager);
+                } finally {
+                    requestTimer.observeDuration();
+                }
                 topDocs = (TopDocs) reduces[0];
                 facetsCollector = reduces.length > 1 ? (FacetsCollector) reduces[1] : null;
             } catch (final IllegalStateException e) {
@@ -612,6 +625,17 @@ public abstract class BaseSearchHandler implements SearchHandler {
             }
 
         };
+    }
+
+    private static Summary latency(final String name) {
+        return Summary.build().name("search3_" + name)
+                .quantile(0.5, 0.01)
+                .quantile(0.75, 0.01)
+                .quantile(0.95, 0.01)
+                .quantile(0.98, 0.01)
+                .quantile(0.99, 0.01)
+                .quantile(0.999, 0.01)
+                .help(name + " latency").register();
     }
 
 }
