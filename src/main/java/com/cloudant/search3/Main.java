@@ -26,6 +26,7 @@ import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
 import io.grpc.netty.shaded.io.netty.handler.ssl.ClientAuth;
 import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
+import io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder;
 
 public class Main {
 
@@ -40,22 +41,27 @@ public class Main {
 
         final boolean tlsEnabled = config.getBoolean("tls.enabled", true);
 
-        final SslContext sslContext;
+        final SslContext grpcSslContext;
+        final SslContext metricsSslContext;
         if (tlsEnabled) {
             final File certChainFile = new File(config.getString("tls.cert_file"));
             // Key needs to be in PKCS8 format for Netty for some bizarre reason.
             final File privateKeyFile = new File(config.getString("tls.key_file"));
             final File clientCAFile = new File(config.getString("tls.ca_file"));
 
-            sslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
+            grpcSslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
+                    .protocols("TLSv1.2", "TLSv1.3").trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
+
+            metricsSslContext = SslContextBuilder.forServer(certChainFile, privateKeyFile)
                     .protocols("TLSv1.2", "TLSv1.3").trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
         } else {
-            sslContext = null;
+            grpcSslContext = null;
+            metricsSslContext = null;
         }
 
         // Start metrics first.
         final int metricsPort = config.getInt("metrics.port", 1234);
-        final MetricsServer metricsServer = new MetricsServer(metricsPort, sslContext);
+        final MetricsServer metricsServer = new MetricsServer(metricsPort, metricsSslContext);
         LOGGER.info("Metrics Server started on port {} {} TLS.", metricsPort, tlsEnabled ? "with" : "without");
         metricsServer.start();
 
@@ -65,7 +71,7 @@ public class Main {
         final NettyServerBuilder builder = NettyServerBuilder.forPort(grpcPort).addService(foo);
 
         if (tlsEnabled) {
-            builder.sslContext(sslContext);
+            builder.sslContext(grpcSslContext);
         }
 
         final Server server = builder.build();
