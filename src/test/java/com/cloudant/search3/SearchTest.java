@@ -271,6 +271,25 @@ public class SearchTest extends BaseFDBTest {
         }
     }
 
+    @Test
+    public void searchWithHighlights() throws Exception {
+        try (final Search search = Search.create(config)) {
+            final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
+
+            // Index something.
+            index(search, update(index, "foobar", "foo", "bar baz", true, false));
+
+            // Find it with a search?
+            final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar")
+                    .setLimit(25).addHighlightFields("foo").build();
+
+            final SearchResponse searchResponse = search(search, searchRequest);
+
+            assertEquals(1, searchResponse.getMatches());
+            assertEquals("<em>bar</em> baz", searchResponse.getHits(0).getHighlights(0));
+        }
+    }
+
     private void index(final Search search, final DocumentUpdateRequest request) {
         final CollectingStreamObserver<SessionResponse> serviceResponseCollector = new CollectingStreamObserver<SessionResponse>();
         search.updateDocument(request, serviceResponseCollector);

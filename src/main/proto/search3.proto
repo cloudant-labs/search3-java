@@ -72,6 +72,11 @@ message SearchRequest {
     map<string, Ranges> ranges = 9;
     repeated Path drilldown = 10;
     repeated string include_fields = 11;
+    repeated string highlight_fields = 12;
+    string highlight_pre_tag = 13;
+    string highlight_post_tag = 14;
+    uint32 highlight_number = 15;
+    uint32 highlight_size = 16;
 }
 
 message SearchResponse {
@@ -123,6 +128,7 @@ message Hit {
     string id = 1;
     repeated FieldValue order = 2;
     repeated HitField fields = 3;
+    repeated string highlights = 4;
 }
 
 message DocumentField {

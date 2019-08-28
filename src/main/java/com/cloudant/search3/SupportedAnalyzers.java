@@ -48,7 +48,6 @@ import org.apache.lucene.analysis.it.ItalianAnalyzer;
 import org.apache.lucene.analysis.ja.JapaneseAnalyzer;
 import org.apache.lucene.analysis.ja.JapaneseTokenizer;
 import org.apache.lucene.analysis.lv.LatvianAnalyzer;
-import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.analysis.nl.DutchAnalyzer;
 import org.apache.lucene.analysis.no.NorwegianAnalyzer;
 import org.apache.lucene.analysis.pl.PolishAnalyzer;
@@ -87,7 +86,7 @@ public final class SupportedAnalyzers {
                 fieldAnalyzers.put(e.getKey(), single(e.getValue()));
             });
         }
-        return new PerFieldAnalyzerWrapper(defaultAnalyzer, fieldAnalyzers);
+        return new PerFieldAnalyzer(defaultAnalyzer, fieldAnalyzers);
     }
 
     public static Analyzer single(final AnalyzerSpec analyzerSpec) {

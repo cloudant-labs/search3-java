@@ -17,15 +17,11 @@ package com.cloudant.search3;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.Assert.assertThat;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.es.SpanishAnalyzer;
 import org.apache.lucene.analysis.fi.FinnishAnalyzer;
 import org.apache.lucene.analysis.hu.HungarianAnalyzer;
-import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.junit.Test;
 
@@ -58,7 +54,7 @@ public class SupportedAnalyzersTest {
         builder.putPerField("bar", spec("hungarian"));
 
         final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(builder.build());
-        assertThat(analyzer, instanceOf(PerFieldAnalyzerWrapper.class));
+        assertThat(analyzer, instanceOf(PerFieldAnalyzer.class));
         assertField(analyzer, "foo", SpanishAnalyzer.class);
         assertField(analyzer, "bar", HungarianAnalyzer.class);
     }
@@ -79,17 +75,13 @@ public class SupportedAnalyzersTest {
     }
 
     private void assertDefault(final Analyzer analyzer, final Class<?> clazz) throws Exception {
-        assertThat(analyzer, instanceOf(PerFieldAnalyzerWrapper.class));
-        final Field f = analyzer.getClass().getDeclaredField("defaultAnalyzer");
-        f.setAccessible(true);
-        assertThat(f.get(analyzer), instanceOf(clazz));
+        assertThat(analyzer, instanceOf(PerFieldAnalyzer.class));
+        assertThat(((PerFieldAnalyzer) analyzer).getDefault(), instanceOf(clazz));
     }
 
     private void assertField(final Analyzer analyzer, final String fieldName, final Class<?> clazz) throws Exception {
-        assertThat(analyzer, instanceOf(PerFieldAnalyzerWrapper.class));
-        final Method m = analyzer.getClass().getDeclaredMethod("getWrappedAnalyzer",  String.class);
-        m.setAccessible(true);
-        assertThat(m.invoke(analyzer, fieldName), instanceOf(clazz));
+        assertThat(analyzer, instanceOf(PerFieldAnalyzer.class));
+        assertThat(((PerFieldAnalyzer) analyzer).getWrappedAnalyzer(fieldName), instanceOf(clazz));
     }
 
 }

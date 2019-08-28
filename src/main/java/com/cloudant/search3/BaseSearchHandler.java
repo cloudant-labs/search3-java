@@ -64,6 +64,12 @@ import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.search.TotalHitCountCollector;
 import org.apache.lucene.search.TotalHits;
 import org.apache.lucene.search.TotalHits.Relation;
+import org.apache.lucene.search.highlight.Formatter;
+import org.apache.lucene.search.highlight.Highlighter;
+import org.apache.lucene.search.highlight.InvalidTokenOffsetsException;
+import org.apache.lucene.search.highlight.QueryScorer;
+import org.apache.lucene.search.highlight.SimpleFragmenter;
+import org.apache.lucene.search.highlight.SimpleHTMLFormatter;
 import org.apache.lucene.util.BytesRef;
 import org.locationtech.spatial4j.context.SpatialContext;
 import org.locationtech.spatial4j.distance.DistanceUtils;
@@ -183,6 +189,13 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 manager = new MultiCollectorManager(resultsManager);
             }
 
+            final Highlighter highlighter;
+            if (request.getHighlightFieldsCount() > 0) {
+                highlighter = getHighlighter(request, query);
+            } else {
+                highlighter = null;
+            }
+
             final TopDocs topDocs;
             try {
                 final Object[] reduces;
@@ -221,6 +234,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
                 hitBuilder.setId(doc.get("_id"));
                 addOrderToHit(hitBuilder, scoreDoc);
                 addFieldsToHit(hitBuilder, doc);
+                addHighlightsToHit(hitBuilder, doc, request, highlighter);
                 responseBuilder.addHits(hitBuilder);
             }
 
@@ -303,6 +317,31 @@ public abstract class BaseSearchHandler implements SearchHandler {
 
     protected final void addOrderToHit(final Hit.Builder hitBuilder, final ScoreDoc scoreDoc) {
         hitBuilder.addAllOrder(toFieldValues(scoreDoc));
+    }
+
+    protected final void addHighlightsToHit(
+            final Hit.Builder hitBuilder,
+            final Document doc,
+            final SearchRequest request,
+            final Highlighter highlighter) throws IOException {
+        if (request.getHighlightFieldsCount() == 0) {
+            return;
+        }
+
+        final List<String> highlightFields = request.getHighlightFieldsList();
+        final int highlightNumber = request.getHighlightNumber() != 0 ? request.getHighlightNumber() : 1;
+        for (final String highlightField : highlightFields) {
+            final Analyzer analyzer = analyzer(highlightField);
+            try {
+                final String[] fragments = highlighter
+                        .getBestFragments(analyzer, highlightField, doc.get(highlightField), highlightNumber);
+                for (final String fragment : fragments) {
+                    hitBuilder.addHighlights(fragment);
+                }
+            } catch (final InvalidTokenOffsetsException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     private Iterable<FieldValue> toFieldValues(final ScoreDoc scoreDoc) {
@@ -622,6 +661,28 @@ public abstract class BaseSearchHandler implements SearchHandler {
             }
 
         };
+    }
+
+    private Highlighter getHighlighter(final SearchRequest request, final Query query) {
+        final String preTag = !request.getHighlightPreTag().isEmpty() ? request.getHighlightPreTag() : "<em>";
+        final String postTag = !request.getHighlightPostTag().isEmpty() ? request.getHighlightPostTag() : "</em>";
+        final int highlightSize = request.getHighlightSize() != 0 ? request.getHighlightSize() : 100;
+        final Formatter formatter = new SimpleHTMLFormatter(preTag, postTag);
+        final Highlighter result = new Highlighter(formatter, new QueryScorer(query));
+
+        if (highlightSize > 0) {
+            result.setTextFragmenter(new SimpleFragmenter(highlightSize));
+        }
+
+        return result;
+    }
+
+    private Analyzer analyzer(final String fieldName) {
+        final Analyzer analyzer = queryParser.get().getAnalyzer();
+        if (analyzer instanceof PerFieldAnalyzer) {
+            return ((PerFieldAnalyzer) analyzer).getWrappedAnalyzer(fieldName);
+        }
+        return analyzer;
     }
 
     private static Histogram latencies() {
