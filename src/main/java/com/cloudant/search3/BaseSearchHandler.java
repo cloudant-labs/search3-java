@@ -328,9 +328,8 @@ public abstract class BaseSearchHandler implements SearchHandler {
             return;
         }
 
-        final List<String> highlightFields = request.getHighlightFieldsList();
         final int highlightNumber = request.getHighlightNumber() != 0 ? request.getHighlightNumber() : 1;
-        for (final String highlightField : highlightFields) {
+        for (final String highlightField : request.getHighlightFieldsList()) {
             final Analyzer analyzer = analyzer(highlightField);
             try {
                 final String[] fragments = highlighter
@@ -339,7 +338,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
                     hitBuilder.addHighlights(fragment);
                 }
             } catch (final InvalidTokenOffsetsException e) {
-                throw new RuntimeException(e);
+                throw new IllegalStateException(e);
             }
         }
     }
