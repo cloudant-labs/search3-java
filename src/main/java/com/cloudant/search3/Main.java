@@ -67,8 +67,9 @@ public class Main {
 
         final int grpcPort = config.getInt("listen.port");
 
-        final Search foo = Search.create(config);
-        final NettyServerBuilder builder = NettyServerBuilder.forPort(grpcPort).addService(foo);
+        final NettyServerBuilder builder = NettyServerBuilder.forPort(grpcPort);
+        builder.addService(Search.create(config));
+        builder.addService(new Health());
 
         if (tlsEnabled) {
             builder.sslContext(grpcSslContext);
