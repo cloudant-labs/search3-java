@@ -286,7 +286,8 @@ public class SearchTest extends BaseFDBTest {
             final SearchResponse searchResponse = search(search, searchRequest);
 
             assertEquals(1, searchResponse.getMatches());
-            assertEquals("<em>bar</em> baz", searchResponse.getHits(0).getHighlights(0));
+            assertEquals("foo", searchResponse.getHits(0).getHighlights(0).getFieldname());
+            assertEquals("<em>bar</em> baz", searchResponse.getHits(0).getHighlights(0).getHighlights(0));
         }
     }
 

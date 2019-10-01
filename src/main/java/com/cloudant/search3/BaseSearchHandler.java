@@ -83,6 +83,7 @@ import com.cloudant.search3.grpc.Search3.DocumentField;
 import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.FieldValue;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
+import com.cloudant.search3.grpc.Search3.Highlights;
 import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.HitField;
 import com.cloudant.search3.grpc.Search3.Index;
@@ -334,9 +335,12 @@ public abstract class BaseSearchHandler implements SearchHandler {
             try {
                 final String[] fragments = highlighter
                         .getBestFragments(analyzer, highlightField, doc.get(highlightField), highlightNumber);
+                final Highlights.Builder highlightsBuilder = Highlights.newBuilder();
+                highlightsBuilder.setFieldname(highlightField);
                 for (final String fragment : fragments) {
-                    hitBuilder.addHighlights(fragment);
+                    highlightsBuilder.addHighlights(fragment);
                 }
+                hitBuilder.addHighlights(highlightsBuilder);
             } catch (final InvalidTokenOffsetsException e) {
                 throw new IllegalStateException(e);
             }
