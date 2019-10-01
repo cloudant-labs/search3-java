@@ -128,7 +128,12 @@ message Hit {
     string id = 1;
     repeated FieldValue order = 2;
     repeated HitField fields = 3;
-    repeated string highlights = 4;
+    repeated Highlights highlights = 4;
+}
+
+message Highlights {
+    string fieldname = 1;
+    repeated string highlights = 2;
 }
 
 message DocumentField {
