@@ -136,8 +136,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         final ScheduledExecutorService scheduler = Executors
                 .newScheduledThreadPool(config.getInt("scheduler_thread_count"));
 
-        final Map<Subspace, SearchHandler> handlers = Collections
-                .synchronizedMap(new SearchHandlerLRUMap(config.getInt("max_indexes_open")));
+        final Map<Subspace, SearchHandler> handlers = new SearchHandlerLRUMap(config.getInt("max_indexes_open"));
 
         final int commitIntervalSecs = config.getInt("commit_interval_secs");
 
@@ -162,7 +161,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 txn.clear(subspace.range());
                 return null;
             });
-            final SearchHandler handler = handlers.remove(subspace);
+            SearchHandler handler;
+            synchronized(handlers) {
+                handler = handlers.remove(subspace);
+            }
             if (handler != null) {
                 handler.close();
             }
@@ -278,62 +280,58 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         } catch (final InterruptedException e) {
             // Ignored.
         }
-        handlers.forEach((index, handler) -> {
-            try {
-                handler.close();
-            } catch (final IOException e) {
-                LOGGER.catching(e);
-            }
-        });
-        handlers.clear();
+        synchronized(handlers) {
+            handlers.forEach((index, handler) -> {
+                try {
+                    handler.close();
+                } catch (final IOException e) {
+                    LOGGER.warn("Error while closing handler " + handler, e);
+                }
+            });
+            handlers.clear();
+        }
     }
 
     private <T> void execute(
             final Index index,
             final StreamObserver<T> responseObserver,
             final LuceneConsumer<SearchHandler> f) {
-        final SearchHandler handler = getOrOpen(index);
         try {
+            final SearchHandler handler = getOrOpen(index);
             f.accept(handler);
-            return;
         } catch (final IOException | AlreadyClosedException e) {
             failedHandler(index, e);
             responseObserver.onError(fromThrowable(e));
-            return;
         } catch (final ParseException e) {
             responseObserver.onError(fromThrowable(e));
-            return;
         } catch (final SessionMismatchException e) {
             responseObserver.onError(fromThrowable(e));
-            return;
         } catch (final RuntimeException e) {
             LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
-            return;
         }
     }
 
-    private SearchHandler getOrOpen(final Index index) {
+    private SearchHandler getOrOpen(final Index index) throws IOException {
         final Subspace subspace = toSubspace(index);
         final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(index);
 
-        final SearchHandler handler = handlers.computeIfAbsent(subspace, key -> {
-            try {
-                final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
-                scheduler.scheduleWithFixedDelay(
-                        new CommitOrCloseTask(subspace, result),
-                        commitIntervalSecs,
-                        commitIntervalSecs,
-                        TimeUnit.SECONDS);
-                LOGGER.info("Opened index {}", result);
+        synchronized(handlers) {
+            SearchHandler result = handlers.get(subspace);
+            if (result != null) {
                 return result;
-            } catch (final IOException e) {
-                LOGGER.catching(e);
-                return null;
             }
-        });
 
-        return handler;
+            result = searchHandlerFactory.open(db, subspace, analyzer);
+            scheduler.scheduleWithFixedDelay(
+                new CommitOrCloseTask(subspace, result),
+                commitIntervalSecs,
+                commitIntervalSecs,
+                TimeUnit.SECONDS);
+            LOGGER.info("Opened index {}", result);
+            handlers.put(subspace, result);
+            return result;
+        }
     }
 
     private Subspace toSubspace(final Index index) {
@@ -365,7 +363,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     private void failedHandler(final Subspace index, final Exception e) {
-        final SearchHandler handler = handlers.remove(index);
+        SearchHandler handler;
+        synchronized(handlers) {
+            handler = handlers.remove(index);
+        }
         try {
             if (handler != null) {
                 handler.close();
