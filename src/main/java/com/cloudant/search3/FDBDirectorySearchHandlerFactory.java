@@ -74,6 +74,7 @@ public final class FDBDirectorySearchHandlerFactory implements SearchHandlerFact
     private static IndexWriterConfig indexWriterConfig(final Analyzer analyzer) {
         final IndexWriterConfig result = new IndexWriterConfig(analyzer);
         result.setUseCompoundFile(false);
+        result.setCommitOnClose(false);
         return result;
     }
 

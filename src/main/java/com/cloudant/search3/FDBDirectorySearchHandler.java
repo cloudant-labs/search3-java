@@ -35,6 +35,7 @@ import org.apache.lucene.search.grouping.GroupDocs;
 import org.apache.lucene.search.grouping.GroupingSearch;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.IOUtils;
 
 import com.cloudant.fdblucene.FDBDirectory;
 import com.cloudant.search3.grpc.Search3.DocumentDeleteRequest;
@@ -78,8 +79,7 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
     @Override
     public void close() throws IOException {
-        this.manager.close();
-        this.writer.rollback();
+        IOUtils.close(this.manager, this.writer, this.dir);
     }
 
     @Override
