@@ -291,8 +291,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final Index index,
             final StreamObserver<T> responseObserver,
             final LuceneConsumer<SearchHandler> f) {
-        final SearchHandler handler = getOrOpen(index);
         try {
+            final SearchHandler handler = getOrOpen(index);
             f.accept(handler);
         } catch (final IOException | AlreadyClosedException e) {
             failedHandler(index, e);
@@ -307,27 +307,28 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         }
     }
 
-    private SearchHandler getOrOpen(final Index index) {
+    private SearchHandler getOrOpen(final Index index) throws IOException {
         final Subspace subspace = toSubspace(index);
         final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(index);
 
-        final SearchHandler handler = handlers.computeIfAbsent(subspace, key -> {
-            try {
-                final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
-                scheduler.scheduleWithFixedDelay(
-                        new CommitOrCloseTask(subspace, result),
-                        commitIntervalSecs,
-                        commitIntervalSecs,
-                        TimeUnit.SECONDS);
-                LOGGER.info("Opened index {}", result);
-                return result;
-            } catch (final IOException e) {
-                LOGGER.catching(e);
-                return null;
-            }
-        });
-
-        return handler;
+        try {
+            return handlers.computeIfAbsent(subspace, key -> {
+                try {
+                    final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
+                    scheduler.scheduleWithFixedDelay(
+                            new CommitOrCloseTask(subspace, result),
+                            commitIntervalSecs,
+                            commitIntervalSecs,
+                            TimeUnit.SECONDS);
+                    LOGGER.info("Opened index {}", result);
+                    return result;
+                } catch (final IOException e) {
+                    throw new FailedHandlerOpenException(e);
+                }
+            });
+        } catch (final FailedHandlerOpenException e) {
+            throw (IOException) e.getCause();
+        }
     }
 
     private Subspace toSubspace(final Index index) {
