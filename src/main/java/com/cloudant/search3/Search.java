@@ -136,8 +136,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         final ScheduledExecutorService scheduler = Executors
                 .newScheduledThreadPool(config.getInt("scheduler_thread_count"));
 
-        final Map<Subspace, SearchHandler> handlers = Collections
-                .synchronizedMap(new SearchHandlerLRUMap(config.getInt("max_indexes_open")));
+        final Map<Subspace, SearchHandler> handlers = new SearchHandlerLRUMap(config.getInt("max_indexes_open"));
 
         final int commitIntervalSecs = config.getInt("commit_interval_secs");
 
