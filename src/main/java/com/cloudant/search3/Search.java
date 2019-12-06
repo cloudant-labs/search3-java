@@ -295,21 +295,16 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         final SearchHandler handler = getOrOpen(index);
         try {
             f.accept(handler);
-            return;
         } catch (final IOException | AlreadyClosedException e) {
             failedHandler(index, e);
             responseObserver.onError(fromThrowable(e));
-            return;
         } catch (final ParseException e) {
             responseObserver.onError(fromThrowable(e));
-            return;
         } catch (final SessionMismatchException e) {
             responseObserver.onError(fromThrowable(e));
-            return;
         } catch (final RuntimeException e) {
             LOGGER.catching(e);
             responseObserver.onError(fromThrowable(e));
-            return;
         }
     }
 
