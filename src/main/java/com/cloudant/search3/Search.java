@@ -161,10 +161,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 txn.clear(subspace.range());
                 return null;
             });
-            SearchHandler handler;
-            synchronized(handlers) {
-                handler = handlers.remove(subspace);
-            }
+            final SearchHandler handler = handlers.remove(subspace);
             if (handler != null) {
                 handler.close();
             }
@@ -280,16 +277,14 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         } catch (final InterruptedException e) {
             // Ignored.
         }
-        synchronized(handlers) {
-            handlers.forEach((index, handler) -> {
-                try {
-                    handler.close();
-                } catch (final IOException e) {
-                    LOGGER.warn("Error while closing handler " + handler, e);
-                }
-            });
-            handlers.clear();
-        }
+        handlers.forEach((index, handler) -> {
+            try {
+                handler.close();
+            } catch (final IOException e) {
+                LOGGER.catching(e);
+            }
+        });
+        handlers.clear();
     }
 
     private <T> void execute(
@@ -316,21 +311,23 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         final Subspace subspace = toSubspace(index);
         final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(index);
 
-        synchronized(handlers) {
-            SearchHandler result = handlers.get(subspace);
-            if (result != null) {
-                return result;
-            }
-
-            result = searchHandlerFactory.open(db, subspace, analyzer);
-            scheduler.scheduleWithFixedDelay(
-                new CommitOrCloseTask(subspace, result),
-                commitIntervalSecs,
-                commitIntervalSecs,
-                TimeUnit.SECONDS);
-            LOGGER.info("Opened index {}", result);
-            handlers.put(subspace, result);
-            return result;
+        try {
+            return handlers.computeIfAbsent(subspace, key -> {
+                try {
+                    final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
+                    scheduler.scheduleWithFixedDelay(
+                            new CommitOrCloseTask(subspace, result),
+                            commitIntervalSecs,
+                            commitIntervalSecs,
+                            TimeUnit.SECONDS);
+                    LOGGER.info("Opened index {}", result);
+                    return result;
+                } catch (final IOException e) {
+                    throw new FailedHandlerOpenException(e);
+                }
+            });
+        } catch (final FailedHandlerOpenException e) {
+            throw (IOException) e.getCause();
         }
     }
 
@@ -363,10 +360,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     }
 
     private void failedHandler(final Subspace index, final Exception e) {
-        SearchHandler handler;
-        synchronized(handlers) {
-            handler = handlers.remove(index);
-        }
+        final SearchHandler handler = handlers.remove(index);
         try {
             if (handler != null) {
                 handler.close();
