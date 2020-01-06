@@ -59,6 +59,14 @@ public final class FDBDirectorySearchHandlerFactory implements SearchHandlerFact
         return new FDBDirectorySearchHandler(dir, writer, manager, analyzer);
     }
 
+    @Override
+    public void delete(final Database db, final Subspace index) {
+        db.run(txn -> {
+           txn.clear(index.range());
+           return null;
+        });
+    }
+
     /**
      * The current holder of the lock will know they lost the lock on their next
      * attempt at a destructive operation and will crash cleanly.
