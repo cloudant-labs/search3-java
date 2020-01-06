@@ -14,7 +14,6 @@
 
 package com.cloudant.search3;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -26,7 +25,6 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.SearcherFactory;
 import org.apache.lucene.search.SearcherManager;
-import org.apache.lucene.store.Directory;
 
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
@@ -63,12 +61,8 @@ public final class FDBDirectorySearchHandlerFactory implements SearchHandlerFact
      * The current holder of the lock will know they lost the lock on their next
      * attempt at a destructive operation and will crash cleanly.
      */
-    private void forciblyUnlock(final Directory dir) throws IOException {
-        try {
-            dir.deleteFile(IndexWriter.WRITE_LOCK_NAME);
-        } catch (final FileNotFoundException e) {
-            // Lock didn't exist.
-        }
+    private void forciblyUnlock(final FDBDirectory dir) throws IOException {
+        dir.unlock(IndexWriter.WRITE_LOCK_NAME);
     }
 
     private static IndexWriterConfig indexWriterConfig(final Analyzer analyzer) {
