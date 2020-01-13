@@ -287,6 +287,19 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         handlers.clear();
     }
 
+    void commitAllHandlers() throws IOException {
+        // This package-private method is intended for index commit test coverage.
+        // It provides an easy interface for triggering commits to storage.
+        for (SearchHandler h : handlers.values()) {
+            try {
+                h.commit();
+            } catch (final IOException e) {
+                LOGGER.catching(e);
+                throw e;
+            }
+        }
+    }
+
     private <T> void execute(
             final Index index,
             final StreamObserver<T> responseObserver,
