@@ -39,7 +39,7 @@ alone.
 check messages.
 
 * `src/proto/search3.proto` - defines the grpc protocol required for
-text indexing and text searching. 
+text indexing and text searching.
 
 Build
 -----
@@ -86,3 +86,5 @@ tls.cert_file = <path to>/cert.pem
 tls.key_file = <path to>/key.pem
 tls.ca_file = <path to>/ca.pem
 tls.enabled = true
+
+A make rule, `make ca.pem`, is available to easily build the cert, key, and ca for test purposes.
