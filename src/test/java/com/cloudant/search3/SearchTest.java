@@ -107,6 +107,7 @@ public class SearchTest extends BaseFDBTest {
 
             // Index something.
             index(search, update(index, "foobar", "foo", "bar baz", true, false));
+            search.commitAllHandlers();
 
             // Find it with a search?
             final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar")
@@ -127,6 +128,7 @@ public class SearchTest extends BaseFDBTest {
             // Index something.
             index(search, update(index, "doc1", "foo", "bar", false, true));
             index(search, update(index, "doc2", "foo", "bar", false, true));
+            search.commitAllHandlers();
 
             // Find it with a search?
             final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("_id:d*")
@@ -148,6 +150,7 @@ public class SearchTest extends BaseFDBTest {
             // Index something.
             index(search, update(index, "doc1", "foo", 1.0, false, true));
             index(search, update(index, "doc2", "foo", 2.0, false, true));
+            search.commitAllHandlers();
 
             final Ranges ranges = Ranges.newBuilder().putRanges("all", "[1 TO 2]").build();
 
@@ -171,6 +174,7 @@ public class SearchTest extends BaseFDBTest {
             // Index something.
             index(search, update(index, "doc1", "foo", "bar", false, true));
             index(search, update(index, "doc2", "foo", "baz", false, true));
+            search.commitAllHandlers();
 
             final Path path = Path.newBuilder().addParts("foo").addParts("baz").build();
 
@@ -194,6 +198,7 @@ public class SearchTest extends BaseFDBTest {
             index(search, update(index, "foo", field("lon", 0.5, true, false), field("lat", 57.15, true, false)));
             index(search, update(index, "bar", field("lon", 10.0, true, false), field("lat", 57.15, true, false)));
             index(search, update(index, "zzz", field("lon", 3.0, true, false), field("lat", 57.15, true, false)));
+            search.commitAllHandlers();
 
             {
                 final Sort sort = Sort.newBuilder().addFields("<distance,lon,lat,0.2,57.15,km>").build();
@@ -228,6 +233,7 @@ public class SearchTest extends BaseFDBTest {
 
             // Index something.
             index(search, update(index, "foobar", "foo", "bar baz", true, false));
+            search.commitAllHandlers();
 
             // Find it with a search?
             final Sort sort = Sort.newBuilder().addFields("foobar").build();
@@ -249,6 +255,7 @@ public class SearchTest extends BaseFDBTest {
             {
                 // Index something.
                 index(search, update(index, "foobar", "category", "foobar", false, false));
+                search.commitAllHandlers();
 
                 // Find it with a search?
                 final GroupSearchRequest groupSearchRequest = GroupSearchRequest.newBuilder().setIndex(index)
@@ -278,6 +285,7 @@ public class SearchTest extends BaseFDBTest {
 
             // Index something.
             index(search, update(index, "foobar", "foo", "bar baz", true, false));
+            search.commitAllHandlers();
 
             // Find it with a search?
             final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar")
