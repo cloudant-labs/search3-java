@@ -29,7 +29,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <lucene-version>8.3.0</lucene-version>
-    <grpc-version>1.21.0</grpc-version>
+    <grpc-version>1.26.0</grpc-version>
     <log4j-version>2.12.0</log4j-version>
     <prometheus-version>0.6.0</prometheus-version>
   </properties>
@@ -124,8 +124,14 @@
     <!-- GRPC -->
     <dependency>
       <groupId>io.grpc</groupId>
-      <artifactId>grpc-netty-shaded</artifactId>
+      <artifactId>grpc-netty</artifactId>
       <version>${grpc-version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-tcnative</artifactId>
+      <version>2.0.28.Final</version>
+      <classifier>${os.detected.classifier}</classifier>
     </dependency>
     <dependency>
       <groupId>io.grpc</groupId>
