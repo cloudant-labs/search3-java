@@ -76,6 +76,11 @@ public class Main {
             builder.sslContext(grpcSslContext);
         }
 
+        final int maxConcurrentCallsPerConnection = config.getInt("netty.maxConcurrentCallsPerConnection", 0);
+        if (maxConcurrentCallsPerConnection > 0) {
+            builder.maxConcurrentCallsPerConnection(maxConcurrentCallsPerConnection);
+        }
+
         final Server server = builder.build();
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
