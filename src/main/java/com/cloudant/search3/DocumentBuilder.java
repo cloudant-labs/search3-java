@@ -49,6 +49,7 @@ public final class DocumentBuilder {
 
     public DocumentBuilder addText(final String name, final String value, final boolean store, final boolean facet) {
         doc().add(new TextField(name, value, toStore(store)));
+        doc().add(new SortedDocValuesField(name, new BytesRef(value)));
         if (facet) {
             doc().add(new SortedSetDocValuesFacetField(name, value));
         }
