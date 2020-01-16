@@ -25,4 +25,6 @@ public interface SearchHandlerFactory {
 
     SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer) throws IOException;
 
+    void delete(final Database db, final Subspace index);
+
 }

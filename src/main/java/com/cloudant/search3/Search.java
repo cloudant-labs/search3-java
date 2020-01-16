@@ -29,6 +29,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
+import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.util.BytesRef;
@@ -294,6 +295,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         try {
             final SearchHandler handler = getOrOpen(index);
             f.accept(handler);
+        } catch (final CorruptIndexException e) {
+            searchHandlerFactory.delete(db, toSubspace(index));
+            failedHandler(index, e);
+            responseObserver.onError(fromThrowable(e));
         } catch (final IOException | AlreadyClosedException e) {
             failedHandler(index, e);
             responseObserver.onError(fromThrowable(e));
