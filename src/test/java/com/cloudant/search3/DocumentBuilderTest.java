@@ -36,4 +36,12 @@ public class DocumentBuilderTest {
         final Document doc = builder.build();
         assertEquals(3, doc.getFields().size());
     }
+
+    @Test
+    public void addText() throws Exception {
+        final DocumentBuilder builder = new DocumentBuilder();
+        builder.addText("foo", "bar", false, false);
+        final Document doc = builder.build();
+        assertEquals(2, doc.getFields().size());
+    }
 }
