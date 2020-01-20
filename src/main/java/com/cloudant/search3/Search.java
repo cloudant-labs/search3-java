@@ -16,7 +16,6 @@ package com.cloudant.search3;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -48,20 +47,15 @@ import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
-import com.cloudant.search3.grpc.SearchGrpc;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Empty;
 
-import io.grpc.Status;
-import io.grpc.StatusException;
-import io.grpc.stub.StreamObserver;
-
-public final class Search extends SearchGrpc.SearchImplBase implements Closeable {
+public final class Search implements Closeable {
 
     @FunctionalInterface
-    interface LuceneConsumer<T> {
+    interface LuceneFunction<T,R> {
 
-        void accept(final T t) throws IOException, ParseException;
+        R apply(final T t) throws IOException, ParseException;
 
     }
 
@@ -153,103 +147,76 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         this.commitIntervalSecs = commitIntervalSecs;
     }
 
-    @Override
-    public void delete(final Index request, final StreamObserver<Empty> responseObserver) {
+    public void delete(final Index request) throws IOException {
         final Subspace subspace = toSubspace(request);
-        try {
-            db.run(txn -> {
-                txn.clear(subspace.range());
-                return null;
-            });
-            final SearchHandler handler = handlers.remove(subspace);
-            if (handler != null) {
-                handler.close();
-            }
-            responseObserver.onNext(EMPTY);
-            responseObserver.onCompleted();
-            LOGGER.info("Deleted index {}.", subspace);
-        } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final RuntimeException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
+        db.run(txn -> {
+            txn.clear(subspace.range());
+            return null;
+        });
+        final SearchHandler handler = handlers.remove(subspace);
+        if (handler != null) {
+            handler.close();
         }
+        LOGGER.info("Deleted index {}.", subspace);
     }
 
-    @Override
-    public void info(final Index request, final StreamObserver<InfoResponse> responseObserver) {
-        execute(request, responseObserver, handler -> {
-            responseObserver.onNext(handler.info(request));
-            responseObserver.onCompleted();
+    public InfoResponse info(final Index request) throws IOException, ParseException {
+        return execute(request, handler -> {
+            final InfoResponse response = handler.info(request);
             idle = false;
+            return response;
         });
     }
 
-    @Override
-    public void setUpdateSequence(final SetUpdateSeqRequest request, final StreamObserver<SessionResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
+    public SessionResponse setUpdateSequence(final SetUpdateSeqRequest request) throws IOException, ParseException {
+        return execute(request.getIndex(), handler -> {
             final SessionResponse response = handler.setUpdateSeq(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
             dirty = true;
             idle = false;
+            return response;
         });
     }
 
-    @Override
-    public void search(final SearchRequest request, final StreamObserver<SearchResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
+    public SearchResponse search(final SearchRequest request) throws IOException, ParseException {
+        return execute(request.getIndex(), handler -> {
             final SearchResponse response = handler.search(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
             idle = false;
+            return response;
         });
     }
 
-    @Override
-    public void groupSearch(
-            final GroupSearchRequest request,
-            final StreamObserver<GroupSearchResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
+    public GroupSearchResponse groupSearch(final GroupSearchRequest request) throws IOException, ParseException {
+        return execute(request.getIndex(), handler -> {
             final GroupSearchResponse response = handler.groupSearch(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
             idle = false;
+            return response;
         });
     }
 
-    @Override
-    public void updateDocument(final DocumentUpdateRequest request, final StreamObserver<SessionResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
-            final SessionResponse response = handler.updateDocument(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
+    public SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException, ParseException {
+        return execute(request.getIndex(), handler -> {
             dirty = true;
             idle = false;
+            return handler.updateDocument(request);
         });
     }
 
-    @Override
-    public void deleteDocument(final DocumentDeleteRequest request, final StreamObserver<SessionResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
+    public SessionResponse deleteDocument(final DocumentDeleteRequest request) throws IOException, ParseException {
+        return execute(request.getIndex(), handler -> {
             final SessionResponse response = handler.deleteDocument(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
             dirty = true;
             idle = false;
+            return response;
         });
     }
 
-    @Override
-    public void analyze(final AnalyzeRequest request, final StreamObserver<AnalyzeResponse> responseObserver) {
+    public AnalyzeResponse analyze(final AnalyzeRequest request) throws IOException {
         final Analyzer analyzer;
         try {
             analyzer = SupportedAnalyzers.single(request.getAnalyzer());
         } catch (final IllegalArgumentException e) {
             LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-            return;
+            throw e;
         }
 
         try (final TokenStream stream = analyzer.tokenStream(null, request.getText())) {
@@ -261,11 +228,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 builder.addTokens(term.utf8ToString());
             }
             stream.end();
-            responseObserver.onNext(builder.build());
-            responseObserver.onCompleted();
+            return builder.build();
         } catch (final IOException e) {
             LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
+            throw e;
         }
     }
 
@@ -287,23 +253,18 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         handlers.clear();
     }
 
-    private <T> void execute(
+    private <R> R execute(
             final Index index,
-            final StreamObserver<T> responseObserver,
-            final LuceneConsumer<SearchHandler> f) {
+            final LuceneFunction<SearchHandler, R> f) throws IOException, ParseException {
         try {
             final SearchHandler handler = getOrOpen(index);
-            f.accept(handler);
+            return f.apply(handler);
         } catch (final IOException | AlreadyClosedException e) {
             failedHandler(index, e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final ParseException e) {
-            responseObserver.onError(fromThrowable(e));
-        } catch (final SessionMismatchException e) {
-            responseObserver.onError(fromThrowable(e));
+            throw e;
         } catch (final RuntimeException e) {
             LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
+            throw e;
         }
     }
 
@@ -337,22 +298,6 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             throw new IllegalArgumentException("Index prefix not specified.");
         }
         return new Subspace(prefix.toByteArray());
-    }
-
-    private StatusException fromThrowable(final Throwable t) {
-        final Status status;
-        if (t instanceof ParseException) {
-            status = Status.INVALID_ARGUMENT;
-        } else if (t instanceof IOException) {
-            status = Status.ABORTED;
-        } else if (t instanceof IllegalArgumentException) {
-            status = Status.INVALID_ARGUMENT;
-        } else if (t instanceof IllegalStateException) {
-            status = Status.FAILED_PRECONDITION;
-        } else {
-            status = Status.fromThrowable(t);
-        }
-        return status.withDescription(t.getMessage()).asException();
     }
 
     private void failedHandler(final Index index, final Exception e) {

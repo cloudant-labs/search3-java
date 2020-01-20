@@ -572,7 +572,7 @@ public abstract class BaseSearchHandler implements SearchHandler {
             final IndexSearcher searcher,
             final Sort sort,
             final int limit,
-            final ScoreDoc after) 
+            final ScoreDoc after)
             throws IOException {
         if (limit == 0) {
             return totalHitCountCollectorManager();

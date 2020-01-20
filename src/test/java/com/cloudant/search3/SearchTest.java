@@ -15,8 +15,6 @@
 package com.cloudant.search3;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -43,38 +41,12 @@ import com.cloudant.search3.grpc.Search3.Path;
 import com.cloudant.search3.grpc.Search3.Ranges;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
-import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.Sort;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.google.protobuf.ByteString;
 
-import io.grpc.stub.StreamObserver;
-
 @RunWith(Parameterized.class)
 public class SearchTest extends BaseFDBTest {
-
-    private static class CollectingStreamObserver<T> implements StreamObserver<T> {
-
-        private T lastValue;
-        private Throwable lastThrowable;
-        private boolean completed;
-
-        @Override
-        public void onNext(final T value) {
-            this.lastValue = value;
-        }
-
-        @Override
-        public void onError(final Throwable t) {
-            this.lastThrowable = t;
-        }
-
-        @Override
-        public void onCompleted() {
-            this.completed = true;
-        }
-
-    };
 
     @Parameters
     public static Collection<SearchHandlerFactory> factories() {
@@ -106,13 +78,13 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            index(search, update(index, "foobar", "foo", "bar baz", true, false));
+            search.updateDocument(update(index, "foobar", "foo", "bar baz", true, false));
 
             // Find it with a search?
             final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar")
                     .setLimit(25).build();
 
-            final SearchResponse searchResponse = search(search, searchRequest);
+            final SearchResponse searchResponse = search.search(searchRequest);
 
             assertEquals(1, searchResponse.getMatches());
             assertEquals("foobar", searchResponse.getHits(0).getId());
@@ -125,14 +97,14 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            index(search, update(index, "doc1", "foo", "bar", false, true));
-            index(search, update(index, "doc2", "foo", "bar", false, true));
+            search.updateDocument(update(index, "doc1", "foo", "bar", false, true));
+            search.updateDocument(update(index, "doc2", "foo", "bar", false, true));
 
             // Find it with a search?
             final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("_id:d*")
                     .addCounts("foo").setLimit(25).build();
 
-            final SearchResponse searchResponse = search(search, searchRequest);
+            final SearchResponse searchResponse = search.search(searchRequest);
             assertEquals(2, searchResponse.getMatches());
             assertEquals("doc1", searchResponse.getHits(0).getId());
             assertTrue(searchResponse.containsCounts("foo"));
@@ -146,8 +118,8 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            index(search, update(index, "doc1", "foo", 1.0, false, true));
-            index(search, update(index, "doc2", "foo", 2.0, false, true));
+            search.updateDocument(update(index, "doc1", "foo", 1.0, false, true));
+            search.updateDocument(update(index, "doc2", "foo", 2.0, false, true));
 
             final Ranges ranges = Ranges.newBuilder().putRanges("all", "[1 TO 2]").build();
 
@@ -155,7 +127,7 @@ public class SearchTest extends BaseFDBTest {
             final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("_id:d*")
                     .putRanges("foo", ranges).setLimit(25).build();
 
-            final SearchResponse searchResponse = search(search, searchRequest);
+            final SearchResponse searchResponse = search.search(searchRequest);
             assertEquals(2, searchResponse.getMatches());
             assertEquals("doc1", searchResponse.getHits(0).getId());
             assertTrue(searchResponse.containsRanges("foo"));
@@ -169,8 +141,8 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            index(search, update(index, "doc1", "foo", "bar", false, true));
-            index(search, update(index, "doc2", "foo", "baz", false, true));
+            search.updateDocument(update(index, "doc1", "foo", "bar", false, true));
+            search.updateDocument(update(index, "doc2", "foo", "baz", false, true));
 
             final Path path = Path.newBuilder().addParts("foo").addParts("baz").build();
 
@@ -179,7 +151,7 @@ public class SearchTest extends BaseFDBTest {
                     .addDrilldown(path)
                     .setLimit(25).build();
 
-            final SearchResponse searchResponse = search(search, searchRequest);
+            final SearchResponse searchResponse = search.search(searchRequest);
             assertEquals(1, searchResponse.getMatches());
             assertEquals("doc2", searchResponse.getHits(0).getId());
         }
@@ -191,16 +163,16 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            index(search, update(index, "foo", field("lon", 0.5, true, false), field("lat", 57.15, true, false)));
-            index(search, update(index, "bar", field("lon", 10.0, true, false), field("lat", 57.15, true, false)));
-            index(search, update(index, "zzz", field("lon", 3.0, true, false), field("lat", 57.15, true, false)));
+            search.updateDocument(update(index, "foo", field("lon", 0.5, true, false), field("lat", 57.15, true, false)));
+            search.updateDocument(update(index, "bar", field("lon", 10.0, true, false), field("lat", 57.15, true, false)));
+            search.updateDocument(update(index, "zzz", field("lon", 3.0, true, false), field("lat", 57.15, true, false)));
 
             {
                 final Sort sort = Sort.newBuilder().addFields("<distance,lon,lat,0.2,57.15,km>").build();
                 final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("*:*")
                         .setSort(sort).setLimit(25).build();
 
-                final SearchResponse searchResponse = search(search, searchRequest);
+                final SearchResponse searchResponse = search.search(searchRequest);
                 assertEquals(3, searchResponse.getMatches());
                 assertEquals("foo", searchResponse.getHits(0).getId());
                 assertEquals("zzz", searchResponse.getHits(1).getId());
@@ -212,7 +184,7 @@ public class SearchTest extends BaseFDBTest {
                 final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("*:*")
                         .setSort(sort).setLimit(25).build();
 
-                final SearchResponse searchResponse = search(search, searchRequest);
+                final SearchResponse searchResponse = search.search(searchRequest);
                 assertEquals(3, searchResponse.getMatches());
                 assertEquals("bar", searchResponse.getHits(0).getId());
                 assertEquals("zzz", searchResponse.getHits(1).getId());
@@ -227,14 +199,14 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            index(search, update(index, "foobar", "foo", "bar baz", true, false));
+            search.updateDocument(update(index, "foobar", "foo", "bar baz", true, false));
 
             // Find it with a search?
             final Sort sort = Sort.newBuilder().addFields("foobar").build();
             final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar")
                     .setSort(sort).setLimit(25).build();
 
-            final SearchResponse searchResponse = search(search, searchRequest);
+            final SearchResponse searchResponse = search.search(searchRequest);
 
             assertEquals(1, searchResponse.getMatches());
             assertEquals("foobar", searchResponse.getHits(0).getId());
@@ -248,13 +220,13 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
             {
                 // Index something.
-                index(search, update(index, "foobar", "category", "foobar", false, false));
+                search.updateDocument(update(index, "foobar", "category", "foobar", false, false));
 
                 // Find it with a search?
                 final GroupSearchRequest groupSearchRequest = GroupSearchRequest.newBuilder().setIndex(index)
                         .setGroupBy("category").setQuery("category:foobar").setLimit(25).setGroupLimit(25).build();
 
-                final GroupSearchResponse searchResponse = search(search, groupSearchRequest);
+                final GroupSearchResponse searchResponse = search.groupSearch(groupSearchRequest);
 
                 assertEquals(1, searchResponse.getMatches());
                 assertEquals(1, searchResponse.getGroupMatches());
@@ -277,26 +249,18 @@ public class SearchTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            index(search, update(index, "foobar", "foo", "bar baz", true, false));
+            search.updateDocument(update(index, "foobar", "foo", "bar baz", true, false));
 
             // Find it with a search?
             final SearchRequest searchRequest = SearchRequest.newBuilder().setIndex(index).setQuery("foo:bar")
                     .setLimit(25).addHighlightFields("foo").build();
 
-            final SearchResponse searchResponse = search(search, searchRequest);
+            final SearchResponse searchResponse = search.search(searchRequest);
 
             assertEquals(1, searchResponse.getMatches());
             assertEquals("foo", searchResponse.getHits(0).getHighlights(0).getFieldname());
             assertEquals("<em>bar</em> baz", searchResponse.getHits(0).getHighlights(0).getHighlights(0));
         }
-    }
-
-    private void index(final Search search, final DocumentUpdateRequest request) {
-        final CollectingStreamObserver<SessionResponse> serviceResponseCollector = new CollectingStreamObserver<SessionResponse>();
-        search.updateDocument(request, serviceResponseCollector);
-        assertNotNull(serviceResponseCollector.lastValue);
-        assertNull(serviceResponseCollector.lastThrowable);
-        assertTrue(serviceResponseCollector.completed);
     }
 
     private DocumentUpdateRequest update(
@@ -318,22 +282,6 @@ public class SearchTest extends BaseFDBTest {
             builder.addFields(field);
         }
         return builder.build();
-    }
-
-    private SearchResponse search(final Search search, final SearchRequest request) {
-        final CollectingStreamObserver<SearchResponse> collector = new CollectingStreamObserver<SearchResponse>();
-        search.search(request, collector);
-
-        assertNull(collector.lastThrowable);
-        return collector.lastValue;
-    }
-
-    private GroupSearchResponse search(final Search search, final GroupSearchRequest request) {
-        final CollectingStreamObserver<GroupSearchResponse> collector = new CollectingStreamObserver<GroupSearchResponse>();
-        search.groupSearch(request, collector);
-
-        assertNull(collector.lastThrowable);
-        return collector.lastValue;
     }
 
     private DocumentField field(final String name, final Object value, final boolean analyzed, final boolean facet) {
