@@ -62,7 +62,7 @@ import io.prometheus.client.hotspot.DefaultExports;
 
 public class MetricsServer {
 
-    private static class HttpHelloWorldServerHandler extends SimpleChannelInboundHandler<HttpObject> {
+    private static class MetricsServerHandler extends SimpleChannelInboundHandler<HttpObject> {
 
         @Override
         public void channelReadComplete(ChannelHandlerContext ctx) {
@@ -147,7 +147,7 @@ public class MetricsServer {
             }
             p.addLast(new HttpServerCodec());
             p.addLast(new HttpServerExpectContinueHandler());
-            p.addLast(new HttpHelloWorldServerHandler());
+            p.addLast(new MetricsServerHandler());
         }
 
     }
