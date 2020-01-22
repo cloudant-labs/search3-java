@@ -67,14 +67,11 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
     private static final Logger LOGGER = LogManager.getLogger();
 
-    private class CommitOrCloseTask implements Runnable {
-
+    private class IdleExitTask implements Runnable {
         private final Subspace index;
-        private final SearchHandler handler;
 
-        private CommitOrCloseTask(final Subspace index, final SearchHandler handler) {
+        private IdleExitTask(final Subspace index) {
             this.index = index;
-            this.handler = handler;
         }
 
         @Override
@@ -84,8 +81,28 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                     throw new IdleHandlerException();
                 }
                 idle = true;
+            } catch (final IOException e) {
+                failedHandler(index, e);
+                throw new RuntimeException(e);
+            }
+        }
 
-                if (dirty) {
+    }
+
+    private class CommitDirtyIndexTask implements Runnable {
+        private final Subspace index;
+        private final SearchHandler handler;
+
+        private CommitDirtyIndexTask(final Subspace index, final SearchHandler handler) {
+            this.index = index;
+            this.handler = handler;
+        }
+
+        @Override
+        public void run() {
+            try {
+                if (dirty && idle) {
+                    idle = false;
                     handler.commit();
                     dirty = false;
                 }
@@ -122,7 +139,9 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
     private final Map<Subspace, SearchHandler> handlers;
     private boolean idle = true;
     private boolean dirty = false;
-    private final int commitIntervalSecs;
+    private final int tickerStartupDelaySecs = 10;
+    private final int idleSearchExitSecs;
+    private final int commitDirtyIntervalSecs;
 
     public static Search create(final Configuration config) throws Exception {
         // Initialize FDB.
@@ -138,19 +157,21 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
 
         final Map<Subspace, SearchHandler> handlers = new SearchHandlerLRUMap(config.getInt("max_indexes_open"));
 
-        final int commitIntervalSecs = config.getInt("commit_interval_secs");
+        final int idleSearchExitSecs = config.getInt("idle_search_exit_secs");
+        final int commitDirtyIntervalSecs = config.getInt("commit_dirty_interval_secs");
 
-        return new Search(db, searchHandlerFactory, scheduler, handlers, commitIntervalSecs);
+        return new Search(db, searchHandlerFactory, scheduler, handlers, idleSearchExitSecs, commitDirtyIntervalSecs);
     }
 
     private Search(final Database db, final SearchHandlerFactory searchHandlerFactory,
             final ScheduledExecutorService scheduler, final Map<Subspace, SearchHandler> handlers,
-            final int commitIntervalSecs) {
+            final int idleSearchExitSecs, final int commitDirtyIntervalSecs) {
         this.db = db;
         this.searchHandlerFactory = searchHandlerFactory;
         this.scheduler = scheduler;
         this.handlers = handlers;
-        this.commitIntervalSecs = commitIntervalSecs;
+        this.idleSearchExitSecs = idleSearchExitSecs;
+        this.commitDirtyIntervalSecs = commitDirtyIntervalSecs;
     }
 
     @Override
@@ -225,8 +246,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final SessionResponse response = handler.updateDocument(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
-            dirty = true;
             idle = false;
+            dirty = true;
         });
     }
 
@@ -236,8 +257,8 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             final SessionResponse response = handler.deleteDocument(request);
             responseObserver.onNext(response);
             responseObserver.onCompleted();
-            dirty = true;
             idle = false;
+            dirty = true;
         });
     }
 
@@ -329,9 +350,14 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 try {
                     final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
                     scheduler.scheduleWithFixedDelay(
-                            new CommitOrCloseTask(subspace, result),
-                            commitIntervalSecs,
-                            commitIntervalSecs,
+                            new IdleExitTask(subspace),
+                            tickerStartupDelaySecs,
+                            idleSearchExitSecs,
+                            TimeUnit.SECONDS);
+                    scheduler.scheduleWithFixedDelay(
+                            new CommitDirtyIndexTask(subspace, result),
+                            tickerStartupDelaySecs,
+                            commitDirtyIntervalSecs,
                             TimeUnit.SECONDS);
                     LOGGER.info("Opened index {}", result);
                     return result;
