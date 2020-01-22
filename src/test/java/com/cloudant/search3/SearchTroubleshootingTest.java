@@ -109,7 +109,13 @@ public class SearchTroubleshootingTest extends BaseFDBTest {
             // Index something.
             for (int j = 0; j < 100; j++) {
                 for (int i = 0; i < 1000; i++) {
+                    final long startTime = System.currentTimeMillis();
                     index(search, update(index, String.format("foo_doc_%d", j), String.format("foo_field_%d", i), "bar baz", true, false));
+                    final long doneTime = System.currentTimeMillis();
+                    final long duration = doneTime - startTime;
+                    if (duration > 1000) {
+                        throw new Exception("Long duration");
+                    }
                 }
             }
             search.commitAllHandlers();
