@@ -47,8 +47,12 @@ import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import com.google.protobuf.ByteString;
 
 import io.grpc.stub.StreamObserver;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 public class SearchTroubleshootingTest extends BaseFDBTest {
+
+    private static final Logger LOGGER = LogManager.getLogger();
 
     private static class CollectingStreamObserver<T> implements StreamObserver<T> {
 
@@ -87,7 +91,8 @@ public class SearchTroubleshootingTest extends BaseFDBTest {
         final Configurations configs = new Configurations();
         this.config = configs.properties(new File("search3.ini"));
         config.setProperty("handler_factory", factory.getClass().getCanonicalName());
-        config.setProperty("commit_interval_secs", "1");
+        config.setProperty("commit_dirty_interval_secs", "5");
+        config.setProperty("idle_search_exit_secs", "30");
     }
 
     @Test
@@ -96,7 +101,7 @@ public class SearchTroubleshootingTest extends BaseFDBTest {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
-            index(search, update(index, "foobar", "foo_field_1", "bar baz", true, false));
+            index(search, update(index, "foobar", "foo_field_1", "bar bazbar babar babar babar babar babar babar babar babar babar babar bazzzzzzzzzzz", true, false));
             search.commitAllHandlers();
         }
     }
@@ -114,6 +119,9 @@ public class SearchTroubleshootingTest extends BaseFDBTest {
                     final long doneTime = System.currentTimeMillis();
                     final long duration = doneTime - startTime;
                     if (duration > 1000) {
+                        LOGGER.info("Long index update duration {}", duration);
+                    }
+                    if (duration > 5500) {
                         throw new Exception("Long duration");
                     }
                 }

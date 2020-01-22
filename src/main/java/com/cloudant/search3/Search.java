@@ -105,6 +105,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
             try {
                 if (dirty) {
                     idle = false;
+                    LOGGER.info("Committing dirty index {}", index);
                     handler.commit();
                     dirty = false;
                 }
