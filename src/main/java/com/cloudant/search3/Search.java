@@ -14,15 +14,16 @@
 
 package com.cloudant.search3;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.configuration2.Configuration;
-import org.apache.commons.jcs.utils.struct.LRUMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
@@ -47,8 +48,12 @@ import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
 import com.google.protobuf.ByteString;
-import com.google.protobuf.Empty;
 
 public final class Search implements Closeable {
 
@@ -91,29 +96,82 @@ public final class Search implements Closeable {
 
     }
 
-    private static class SearchHandlerLRUMap extends LRUMap<Subspace, SearchHandler> {
+    private static class SearchCacheKey {
 
-        public SearchHandlerLRUMap(int maxObjects) {
-            super(maxObjects);
+        private final Index index;
+
+        private SearchCacheKey(final Index index) {
+            this.index = index;
         }
 
         @Override
-        protected void processRemovedLRU(Subspace key, SearchHandler value) {
-            try {
-                value.close();
-                LOGGER.info("LRU closed {}", value);
-            } catch (final IOException e) {
-                LOGGER.warn("IOException when closing handler", e);
-            }
+        public int hashCode() {
+            final ByteString prefix = index.getPrefix();
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + ((prefix == null) ? 0 : prefix.hashCode());
+            return result;
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj)
+                return true;
+            if (obj == null)
+                return false;
+            if (getClass() != obj.getClass())
+                return false;
+            SearchCacheKey other = (SearchCacheKey) obj;
+            if (index.getPrefix() == null) {
+                if (other.index.getPrefix() != null)
+                    return false;
+            } else if (!index.getPrefix().equals(other.index.getPrefix()))
+                return false;
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            return "SearchCacheKey [index=" + index + "]";
+        }
+
     }
 
-    private static final Empty EMPTY = Empty.getDefaultInstance();
+    private class SearchCacheLoader extends CacheLoader<SearchCacheKey, SearchHandler> {
+
+        @Override
+        public SearchHandler load(final SearchCacheKey key) throws Exception {
+            final Subspace subspace = toSubspace(key.index);
+            final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(key.index);
+            final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
+            scheduler.scheduleWithFixedDelay(
+                    new CommitOrCloseTask(subspace, result),
+                    commitIntervalSecs,
+                    commitIntervalSecs,
+                    TimeUnit.SECONDS);
+            LOGGER.info("Opened index {}", result);
+            return result;
+        }
+
+    }
+
+    private class SearchRemovalListener implements RemovalListener<SearchCacheKey, SearchHandler> {
+
+        @Override
+        public void onRemoval(final RemovalNotification<SearchCacheKey, SearchHandler> notification) {
+            try {
+                notification.getValue().close();
+            } catch (final IOException e) {
+                LOGGER.error("I/O exception while closing evicted index " + notification.getKey(), e);
+            }
+        }
+
+    }
 
     private final Database db;
     private final ScheduledExecutorService scheduler;
     private final SearchHandlerFactory searchHandlerFactory;
-    private final Map<Subspace, SearchHandler> handlers;
+    private final LoadingCache<SearchCacheKey, SearchHandler> handlers;
     private boolean idle = true;
     private boolean dirty = false;
     private final int commitIntervalSecs;
@@ -130,20 +188,22 @@ public final class Search implements Closeable {
         final ScheduledExecutorService scheduler = Executors
                 .newScheduledThreadPool(config.getInt("scheduler_thread_count"));
 
-        final Map<Subspace, SearchHandler> handlers = new SearchHandlerLRUMap(config.getInt("max_indexes_open"));
-
+        final String cacheConfig = config.getString("cache.handler_config");
         final int commitIntervalSecs = config.getInt("commit_interval_secs");
 
-        return new Search(db, searchHandlerFactory, scheduler, handlers, commitIntervalSecs);
+        return new Search(db, searchHandlerFactory, scheduler, cacheConfig, commitIntervalSecs);
     }
 
     private Search(final Database db, final SearchHandlerFactory searchHandlerFactory,
-            final ScheduledExecutorService scheduler, final Map<Subspace, SearchHandler> handlers,
+            final ScheduledExecutorService scheduler, final String cacheConfig,
             final int commitIntervalSecs) {
         this.db = db;
         this.searchHandlerFactory = searchHandlerFactory;
         this.scheduler = scheduler;
-        this.handlers = handlers;
+        this.handlers = CacheBuilder
+                .from(cacheConfig)
+                .removalListener(new SearchRemovalListener())
+                .build(new SearchCacheLoader());
         this.commitIntervalSecs = commitIntervalSecs;
     }
 
@@ -153,14 +213,11 @@ public final class Search implements Closeable {
             txn.clear(subspace.range());
             return null;
         });
-        final SearchHandler handler = handlers.remove(subspace);
-        if (handler != null) {
-            handler.close();
-        }
+        handlers.invalidate(subspace);
         LOGGER.info("Deleted index {}.", subspace);
     }
 
-    public InfoResponse info(final Index request) throws IOException, ParseException {
+    public InfoResponse info(final Index request) throws Exception {
         return execute(request, handler -> {
             final InfoResponse response = handler.info(request);
             idle = false;
@@ -168,7 +225,7 @@ public final class Search implements Closeable {
         });
     }
 
-    public SessionResponse setUpdateSequence(final SetUpdateSeqRequest request) throws IOException, ParseException {
+    public SessionResponse setUpdateSequence(final SetUpdateSeqRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
             final SessionResponse response = handler.setUpdateSeq(request);
             dirty = true;
@@ -177,7 +234,7 @@ public final class Search implements Closeable {
         });
     }
 
-    public SearchResponse search(final SearchRequest request) throws IOException, ParseException {
+    public SearchResponse search(final SearchRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
             final SearchResponse response = handler.search(request);
             idle = false;
@@ -185,7 +242,7 @@ public final class Search implements Closeable {
         });
     }
 
-    public GroupSearchResponse groupSearch(final GroupSearchRequest request) throws IOException, ParseException {
+    public GroupSearchResponse groupSearch(final GroupSearchRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
             final GroupSearchResponse response = handler.groupSearch(request);
             idle = false;
@@ -193,7 +250,7 @@ public final class Search implements Closeable {
         });
     }
 
-    public SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException, ParseException {
+    public SessionResponse updateDocument(final DocumentUpdateRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
             dirty = true;
             idle = false;
@@ -201,7 +258,7 @@ public final class Search implements Closeable {
         });
     }
 
-    public SessionResponse deleteDocument(final DocumentDeleteRequest request) throws IOException, ParseException {
+    public SessionResponse deleteDocument(final DocumentDeleteRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
             final SessionResponse response = handler.deleteDocument(request);
             dirty = true;
@@ -243,22 +300,18 @@ public final class Search implements Closeable {
         } catch (final InterruptedException e) {
             // Ignored.
         }
-        handlers.forEach((index, handler) -> {
-            try {
-                handler.close();
-            } catch (final IOException e) {
-                LOGGER.catching(e);
-            }
-        });
-        handlers.clear();
+        handlers.invalidateAll();
     }
 
     private <R> R execute(
             final Index index,
-            final LuceneFunction<SearchHandler, R> f) throws IOException, ParseException {
+            final LuceneFunction<SearchHandler, R> f) throws IOException, ParseException, ExecutionException {
         try {
-            final SearchHandler handler = getOrOpen(index);
+            final SearchHandler handler = handlers.get(new SearchCacheKey(index));
             return f.apply(handler);
+        } catch (ExecutionException e) {
+            failedHandler(index, e);
+            throw e;
         } catch (final IOException | AlreadyClosedException e) {
             failedHandler(index, e);
             throw e;
@@ -268,31 +321,7 @@ public final class Search implements Closeable {
         }
     }
 
-    private SearchHandler getOrOpen(final Index index) throws IOException {
-        final Subspace subspace = toSubspace(index);
-        final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(index);
-
-        try {
-            return handlers.computeIfAbsent(subspace, key -> {
-                try {
-                    final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
-                    scheduler.scheduleWithFixedDelay(
-                            new CommitOrCloseTask(subspace, result),
-                            commitIntervalSecs,
-                            commitIntervalSecs,
-                            TimeUnit.SECONDS);
-                    LOGGER.info("Opened index {}", result);
-                    return result;
-                } catch (final IOException e) {
-                    throw new FailedHandlerOpenException(e);
-                }
-            });
-        } catch (final FailedHandlerOpenException e) {
-            throw (IOException) e.getCause();
-        }
-    }
-
-    private Subspace toSubspace(final Index index) {
+    private static Subspace toSubspace(final Index index) {
         final ByteString prefix = index.getPrefix();
         if (prefix.isEmpty()) {
             throw new IllegalArgumentException("Index prefix not specified.");
@@ -305,20 +334,12 @@ public final class Search implements Closeable {
     }
 
     private void failedHandler(final Subspace index, final Exception e) {
-        final SearchHandler handler = handlers.remove(index);
-        try {
-            if (handler != null) {
-                handler.close();
-            }
-            if (e instanceof IdleHandlerException) {
-                LOGGER.info("Closed idle handler for index {}.",  index);
-            } else {
-                LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
-            }
-        } catch (final IOException e1) {
-            LOGGER.warn("Ignoring exception thrown while closing failed handler", e1);
+        handlers.invalidate(index);
+        if (e instanceof IdleHandlerException) {
+            LOGGER.info("Closed idle handler for index {}.",  index);
+        } else {
+            LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
         }
-
     }
 
 }
