@@ -83,7 +83,7 @@ public class SearchTroubleshootingTest extends BaseFDBTest {
         final Configurations configs = new Configurations();
         this.config = configs.properties(new File("search3.ini"));
         config.setProperty("handler_factory", factory.getClass().getCanonicalName());
-        config.setProperty("commit_dirty_interval_secs", "15");
+        config.setProperty("commit_dirty_interval_secs", "30");
         config.setProperty("idle_search_exit_secs", "60");
     }
 
@@ -108,6 +108,30 @@ public class SearchTroubleshootingTest extends BaseFDBTest {
                 for (int i = 0; i < 1000; i++) {
                     final long startTime = System.currentTimeMillis();
                     index(search, update(index, String.format("foo_doc_%d", j), String.format("foo_field_%d", i), "bar baz", true, false));
+                    final long doneTime = System.currentTimeMillis();
+                    final long duration = doneTime - startTime;
+                    if (duration > 1000) {
+                        LOGGER.info("Long index update duration {}", duration);
+                    }
+                    if (duration > 5500) {
+                        throw new Exception("Long duration");
+                    }
+                }
+            }
+            search.commitAllHandlers();
+        }
+    }
+
+    @Test
+    public void indexManyFaceted() throws Exception {
+        try (final Search search = Search.create(config)) {
+            final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
+
+            // Index something.
+            for (int j = 0; j < 100; j++) {
+                for (int i = 0; i < 1000; i++) {
+                    final long startTime = System.currentTimeMillis();
+                    index(search, update(index, String.format("foo_doc_%d", j), String.format("foo_field_%d", i), "bar baz", true, true));
                     final long doneTime = System.currentTimeMillis();
                     final long duration = doneTime - startTime;
                     if (duration > 1000) {
