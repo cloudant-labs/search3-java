@@ -310,7 +310,11 @@ public final class Search implements Closeable {
             if (handler != null) {
                 handler.close();
             }
-            LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
+            if (e instanceof IdleHandlerException) {
+                LOGGER.info("Closed idle handler for index {}.",  index);
+            } else {
+                LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
+            }
         } catch (final IOException e1) {
             LOGGER.warn("Ignoring exception thrown while closing failed handler", e1);
         }
