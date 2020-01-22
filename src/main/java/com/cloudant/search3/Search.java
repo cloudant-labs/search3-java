@@ -101,7 +101,7 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         @Override
         public void run() {
             try {
-                if (dirty && idle) {
+                if (dirty) {
                     idle = false;
                     LOGGER.info("Committing dirty index {}", index);
                     handler.commit();
