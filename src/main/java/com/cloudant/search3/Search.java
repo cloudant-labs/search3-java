@@ -66,6 +66,20 @@ public final class Search implements Closeable {
 
     private static final Logger LOGGER = LogManager.getLogger();
 
+    private static class CleanupTask implements Runnable {
+
+        private final LoadingCache<?,?> cache;
+
+        private CleanupTask(final LoadingCache<?,?> cache) {
+            this.cache = cache;
+        }
+
+        public void run() {
+            cache.cleanUp();
+        }
+
+    }
+
     private class CommitOrCloseTask implements Runnable {
 
         private final Subspace index;
@@ -79,11 +93,6 @@ public final class Search implements Closeable {
         @Override
         public void run() {
             try {
-                if (idle) {
-                    throw new IdleHandlerException();
-                }
-                idle = true;
-
                 if (dirty) {
                     handler.commit();
                     dirty = false;
@@ -132,7 +141,7 @@ public final class Search implements Closeable {
 
         @Override
         public String toString() {
-            return "SearchCacheKey [index=" + index + "]";
+            return index.toString();
         }
 
     }
@@ -161,6 +170,7 @@ public final class Search implements Closeable {
         public void onRemoval(final RemovalNotification<SearchCacheKey, SearchHandler> notification) {
             try {
                 notification.getValue().close();
+                LOGGER.info("Closed handler for index {}.",  notification.getKey());
             } catch (final IOException e) {
                 LOGGER.error("I/O exception while closing evicted index " + notification.getKey(), e);
             }
@@ -172,7 +182,6 @@ public final class Search implements Closeable {
     private final ScheduledExecutorService scheduler;
     private final SearchHandlerFactory searchHandlerFactory;
     private final LoadingCache<SearchCacheKey, SearchHandler> handlers;
-    private boolean idle = true;
     private boolean dirty = false;
     private final int commitIntervalSecs;
 
@@ -205,6 +214,7 @@ public final class Search implements Closeable {
                 .removalListener(new SearchRemovalListener())
                 .build(new SearchCacheLoader());
         this.commitIntervalSecs = commitIntervalSecs;
+        scheduler.scheduleWithFixedDelay(new CleanupTask(handlers), commitIntervalSecs, commitIntervalSecs, SECONDS);
     }
 
     public void delete(final Index request) throws IOException {
@@ -220,7 +230,6 @@ public final class Search implements Closeable {
     public InfoResponse info(final Index request) throws Exception {
         return execute(request, handler -> {
             final InfoResponse response = handler.info(request);
-            idle = false;
             return response;
         });
     }
@@ -229,31 +238,25 @@ public final class Search implements Closeable {
         return execute(request.getIndex(), handler -> {
             final SessionResponse response = handler.setUpdateSeq(request);
             dirty = true;
-            idle = false;
             return response;
         });
     }
 
     public SearchResponse search(final SearchRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
-            final SearchResponse response = handler.search(request);
-            idle = false;
-            return response;
+            return handler.search(request);
         });
     }
 
     public GroupSearchResponse groupSearch(final GroupSearchRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
-            final GroupSearchResponse response = handler.groupSearch(request);
-            idle = false;
-            return response;
+            return handler.groupSearch(request);
         });
     }
 
     public SessionResponse updateDocument(final DocumentUpdateRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
             dirty = true;
-            idle = false;
             return handler.updateDocument(request);
         });
     }
@@ -262,7 +265,6 @@ public final class Search implements Closeable {
         return execute(request.getIndex(), handler -> {
             final SessionResponse response = handler.deleteDocument(request);
             dirty = true;
-            idle = false;
             return response;
         });
     }
@@ -335,11 +337,7 @@ public final class Search implements Closeable {
 
     private void failedHandler(final Subspace index, final Exception e) {
         handlers.invalidate(index);
-        if (e instanceof IdleHandlerException) {
-            LOGGER.info("Closed idle handler for index {}.",  index);
-        } else {
-            LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
-        }
+        LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
     }
 
 }
