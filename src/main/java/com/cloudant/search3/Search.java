@@ -93,9 +93,8 @@ public final class Search implements Closeable {
         @Override
         public void run() {
             try {
-                if (dirty) {
+                if (handler.hasUncommittedChanges()) {
                     handler.commit();
-                    dirty = false;
                 }
             } catch (final IOException e) {
                 failedHandler(index, e);
@@ -182,7 +181,6 @@ public final class Search implements Closeable {
     private final ScheduledExecutorService scheduler;
     private final SearchHandlerFactory searchHandlerFactory;
     private final LoadingCache<SearchCacheKey, SearchHandler> handlers;
-    private boolean dirty = false;
     private final int commitIntervalSecs;
 
     public static Search create(final Configuration config) throws Exception {
@@ -236,9 +234,7 @@ public final class Search implements Closeable {
 
     public SessionResponse setUpdateSequence(final SetUpdateSeqRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
-            final SessionResponse response = handler.setUpdateSeq(request);
-            dirty = true;
-            return response;
+            return handler.setUpdateSeq(request);
         });
     }
 
@@ -256,16 +252,13 @@ public final class Search implements Closeable {
 
     public SessionResponse updateDocument(final DocumentUpdateRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
-            dirty = true;
             return handler.updateDocument(request);
         });
     }
 
     public SessionResponse deleteDocument(final DocumentDeleteRequest request) throws Exception {
         return execute(request.getIndex(), handler -> {
-            final SessionResponse response = handler.deleteDocument(request);
-            dirty = true;
-            return response;
+            return handler.deleteDocument(request);
         });
     }
 
