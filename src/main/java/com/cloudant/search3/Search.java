@@ -80,12 +80,12 @@ public final class Search implements Closeable {
 
     }
 
-    private class CommitOrCloseTask implements Runnable {
+    private class CommitTask implements Runnable {
 
         private final Subspace index;
         private final SearchHandler handler;
 
-        private CommitOrCloseTask(final Subspace index, final SearchHandler handler) {
+        private CommitTask(final Subspace index, final SearchHandler handler) {
             this.index = index;
             this.handler = handler;
         }
@@ -153,7 +153,7 @@ public final class Search implements Closeable {
             final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(key.index);
             final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
             scheduler.scheduleWithFixedDelay(
-                    new CommitOrCloseTask(subspace, result),
+                    new CommitTask(subspace, result),
                     commitIntervalSecs,
                     commitIntervalSecs,
                     TimeUnit.SECONDS);
