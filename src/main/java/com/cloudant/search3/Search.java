@@ -18,9 +18,12 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.configuration2.Configuration;
@@ -152,11 +155,12 @@ public final class Search implements Closeable {
             final Subspace subspace = toSubspace(key.index);
             final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(key.index);
             final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
-            scheduler.scheduleWithFixedDelay(
+            final ScheduledFuture<?> commitFuture = scheduler.scheduleWithFixedDelay(
                     new CommitTask(subspace, result),
                     commitIntervalSecs,
                     commitIntervalSecs,
                     TimeUnit.SECONDS);
+            commitFutures.put(key, commitFuture);
             LOGGER.info("Opened index {}", result);
             return result;
         }
@@ -168,6 +172,7 @@ public final class Search implements Closeable {
         @Override
         public void onRemoval(final RemovalNotification<SearchCacheKey, SearchHandler> notification) {
             try {
+                commitFutures.remove(notification.getKey()).cancel(false);
                 notification.getValue().close();
                 LOGGER.info("Closed handler for index {}.",  notification.getKey());
             } catch (final IOException e) {
@@ -181,6 +186,7 @@ public final class Search implements Closeable {
     private final ScheduledExecutorService scheduler;
     private final SearchHandlerFactory searchHandlerFactory;
     private final LoadingCache<SearchCacheKey, SearchHandler> handlers;
+    private final Map<SearchCacheKey, ScheduledFuture<?>> commitFutures;
     private final int commitIntervalSecs;
 
     public static Search create(final Configuration config) throws Exception {
@@ -212,6 +218,7 @@ public final class Search implements Closeable {
                 .removalListener(new SearchRemovalListener())
                 .build(new SearchCacheLoader());
         this.commitIntervalSecs = commitIntervalSecs;
+        this.commitFutures = new ConcurrentHashMap<SearchCacheKey, ScheduledFuture<?>>();
         scheduler.scheduleWithFixedDelay(new CleanupTask(handlers), commitIntervalSecs, commitIntervalSecs, SECONDS);
     }
 
