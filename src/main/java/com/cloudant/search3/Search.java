@@ -101,7 +101,6 @@ public final class Search implements Closeable {
                 }
             } catch (final IOException e) {
                 failedHandler(index, e);
-                throw new RuntimeException(e);
             }
         }
 
@@ -174,9 +173,9 @@ public final class Search implements Closeable {
             try {
                 commitFutures.remove(notification.getKey()).cancel(false);
                 notification.getValue().close();
-                LOGGER.info("Closed handler for index {}.",  notification.getKey());
+                LOGGER.info("Closed handler for index {} for reason {}.",  notification.getValue(), notification.getCause());
             } catch (final IOException e) {
-                LOGGER.error("I/O exception while closing evicted index " + notification.getKey(), e);
+                LOGGER.error("I/O exception while closing evicted index " + notification.getValue(), e);
             }
         }
 
@@ -229,7 +228,6 @@ public final class Search implements Closeable {
             return null;
         });
         handlers.invalidate(subspace);
-        LOGGER.info("Deleted index {}.", subspace);
     }
 
     public InfoResponse info(final Index request) throws Exception {
