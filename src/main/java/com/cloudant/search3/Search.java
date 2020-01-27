@@ -106,6 +106,10 @@ public final class Search implements Closeable {
 
     }
 
+    /**
+     * Only use the index prefix for equality check so that an
+     * Index message with and without a session are considered the same.
+     */
     private static class SearchCacheKey {
 
         private final Index index;
