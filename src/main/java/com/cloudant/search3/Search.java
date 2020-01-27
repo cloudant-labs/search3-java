@@ -309,10 +309,7 @@ public final class Search implements Closeable {
         try {
             final SearchHandler handler = handlers.get(new SearchCacheKey(index));
             return f.apply(handler);
-        } catch (ExecutionException e) {
-            failedHandler(index, e);
-            throw e;
-        } catch (final IOException | AlreadyClosedException e) {
+        } catch (final IOException | AlreadyClosedException | ExecutionException e) {
             failedHandler(index, e);
             throw e;
         } catch (final RuntimeException e) {
