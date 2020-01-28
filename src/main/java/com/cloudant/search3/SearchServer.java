@@ -66,7 +66,7 @@ public class SearchServer extends AbstractServer {
 
         private final Search search;
 
-        private SearchServerHandler(final Search search)  {
+        private SearchServerHandler(final Search search) {
             this.search = search;
         }
 
