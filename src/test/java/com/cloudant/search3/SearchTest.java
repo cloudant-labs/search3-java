@@ -67,14 +67,14 @@ public class SearchTest extends BaseFDBTest {
     public void setup() throws Exception {
         super.setup();
         final Configurations configs = new Configurations();
-        this.config = configs.properties(new File("search3.ini"));
+        this.config = configs.ini(new File("search3.ini"));
         config.setProperty("handler_factory", factory.getClass().getCanonicalName());
         config.setProperty("commit_interval_secs", "1");
     }
 
     @Test
     public void basicSearch() throws Exception {
-        try (final Search search = Search.create(config)) {
+        try (final Search search = new Search(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
@@ -93,7 +93,7 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void countFacetSearch() throws Exception {
-        try (final Search search = Search.create(config)) {
+        try (final Search search = new Search(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
@@ -114,7 +114,7 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void rangeFacetSearch() throws Exception {
-        try (final Search search = Search.create(config)) {
+        try (final Search search = new Search(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
@@ -137,7 +137,7 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void drilldownSearch() throws Exception {
-        try (final Search search = Search.create(config)) {
+        try (final Search search = new Search(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
@@ -159,7 +159,7 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void sortByDistanceSearch() throws Exception {
-        try (final Search search = Search.create(config)) {
+        try (final Search search = new Search(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
@@ -195,7 +195,7 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void sortSearch() throws Exception {
-        try (final Search search = Search.create(config)) {
+        try (final Search search = new Search(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.
@@ -215,7 +215,7 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void indexAndGroupSearch() throws Exception {
-        try (final Search search = Search.create(config)) {
+        try (final Search search = new Search(config)) {
 
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
             {
@@ -245,7 +245,7 @@ public class SearchTest extends BaseFDBTest {
 
     @Test
     public void searchWithHighlights() throws Exception {
-        try (final Search search = Search.create(config)) {
+        try (final Search search = new Search(config)) {
             final Index index = Index.newBuilder().setPrefix(ByteString.copyFrom(prefix)).build();
 
             // Index something.

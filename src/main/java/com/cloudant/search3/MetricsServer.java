@@ -30,10 +30,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.configuration2.Configuration;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
@@ -124,18 +127,18 @@ public class MetricsServer extends AbstractServer {
 
     }
 
-    private static class HttpHelloWorldServerInitializer extends ChannelInitializer<SocketChannel> {
-        private final SslContext sslCtx;
+    private static class MetricsServerInitializer extends ChannelInitializer<SocketChannel> {
+        private final SslContext sslContext;
 
-        public HttpHelloWorldServerInitializer(SslContext sslCtx) {
-            this.sslCtx = sslCtx;
+        public MetricsServerInitializer(SslContext sslContext) {
+            this.sslContext = sslContext;
         }
 
         @Override
-        public void initChannel(SocketChannel ch) {
+        public void initChannel(final SocketChannel ch) {
             ChannelPipeline p = ch.pipeline();
-            if (sslCtx != null) {
-                p.addLast(sslCtx.newHandler(ch.alloc()));
+            if (sslContext != null) {
+                p.addLast(sslContext.newHandler(ch.alloc()));
             }
             p.addLast(new HttpServerCodec());
             p.addLast(new HttpServerExpectContinueHandler());
@@ -144,10 +147,15 @@ public class MetricsServer extends AbstractServer {
 
     }
 
-    public MetricsServer(final int port, final SslContext sslCtx) {
-        super(port, new HttpHelloWorldServerInitializer(sslCtx));
+    public MetricsServer(final Configuration configuration) {
+        super(configuration);
         // add included collectors
         DefaultExports.initialize();
+    }
+
+    @Override
+    protected ChannelHandler configureChannelHandler(final SslContext sslContext) {
+        return new MetricsServerInitializer(sslContext);
     }
 
 }

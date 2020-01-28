@@ -192,35 +192,17 @@ public final class Search implements Closeable {
     private final Map<SearchCacheKey, ScheduledFuture<?>> commitFutures;
     private final int commitIntervalSecs;
 
-    public static Search create(final Configuration config) throws Exception {
-        // Initialize FDB.
-        FDB.selectAPIVersion(config.getInt("fdb.version"));
-
-        final Database db = FDB.instance().open();
-
-        final SearchHandlerFactory searchHandlerFactory = (SearchHandlerFactory) Class
+    public Search(final Configuration config) throws Exception {
+        this.db = FDB.instance().open();
+        this.searchHandlerFactory = (SearchHandlerFactory) Class
                 .forName(config.getString("handler_factory")).newInstance();
-
-        final ScheduledExecutorService scheduler = Executors
-                .newScheduledThreadPool(config.getInt("scheduler_thread_count"));
-
-        final String cacheConfig = config.getString("cache.handler_config");
-        final int commitIntervalSecs = config.getInt("commit_interval_secs");
-
-        return new Search(db, searchHandlerFactory, scheduler, cacheConfig, commitIntervalSecs);
-    }
-
-    private Search(final Database db, final SearchHandlerFactory searchHandlerFactory,
-            final ScheduledExecutorService scheduler, final String cacheConfig,
-            final int commitIntervalSecs) {
-        this.db = db;
-        this.searchHandlerFactory = searchHandlerFactory;
-        this.scheduler = scheduler;
+        this.scheduler = Executors
+                .newScheduledThreadPool(config.getInt("scheduler_thread_count", 8));
         this.handlers = CacheBuilder
-                .from(cacheConfig)
+                .from(config.getString("cache_config", ""))
                 .removalListener(new SearchRemovalListener())
                 .build(new SearchCacheLoader());
-        this.commitIntervalSecs = commitIntervalSecs;
+        this.commitIntervalSecs = config.getInt("commit_interval_secs", 5);
         this.commitFutures = new ConcurrentHashMap<SearchCacheKey, ScheduledFuture<?>>();
         scheduler.scheduleWithFixedDelay(new CleanupTask(handlers), commitIntervalSecs, commitIntervalSecs, SECONDS);
     }

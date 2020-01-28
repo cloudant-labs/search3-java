@@ -12,6 +12,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import java.io.IOException;
 
+import org.apache.commons.configuration2.Configuration;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.queryparser.classic.ParseException;
@@ -33,6 +34,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
@@ -58,14 +60,13 @@ public class SearchServer extends AbstractServer {
 
     private static final Logger LOGGER = LogManager.getLogger();
     private static final String RPC_MESSAGE_TYPE = "rpc-message-type";
+    private static final ByteBuf EMPTY = wrappedBuffer(Empty.getDefaultInstance().toByteArray());
 
-    private static class SearchServerHandler extends SimpleChannelInboundHandler<HttpObject> {
-
-        private static final ByteBuf EMPTY = wrappedBuffer(Empty.getDefaultInstance().toByteArray());
+    private class SearchServerHandler extends SimpleChannelInboundHandler<HttpObject> {
 
         private final Search search;
 
-        public SearchServerHandler(final Search search) {
+        private SearchServerHandler(final Search search)  {
             this.search = search;
         }
 
@@ -230,28 +231,29 @@ public class SearchServer extends AbstractServer {
 
     }
 
-    private static class SearchServerInitializer extends ChannelInitializer<SocketChannel> {
+    private class SearchServerInitializer extends ChannelInitializer<SocketChannel> {
 
-        private static final EventExecutorGroup searchGroup = new DefaultEventExecutorGroup(16);
+        private final EventExecutorGroup searchGroup;
 
-        private final SslContext sslCtx;
-        private final Search search;
+        private final SslContext sslContext;
 
-        public SearchServerInitializer(final SslContext sslCtx, final Search search) {
-            this.sslCtx = sslCtx;
-            this.search = search;
+        public SearchServerInitializer(final SslContext sslContext) {
+            this.sslContext = sslContext;
+            final int concurrency = configuration.getInt("concurrency", 16);
+            this.searchGroup = new DefaultEventExecutorGroup(concurrency);
         }
 
         @Override
         public void initChannel(SocketChannel ch) {
             final ChannelPipeline p = ch.pipeline();
-            if (sslCtx != null) {
-                p.addLast(sslCtx.newHandler(ch.alloc()));
+            if (sslContext != null) {
+                p.addLast(sslContext.newHandler(ch.alloc()));
             }
 
             // http
             p.addLast("httpCodec", new HttpServerCodec());
-            p.addLast("httpAggregator", new HttpObjectAggregator(10485760));
+            final int maxContentLength = configuration.getInt("max_request_length", 10485760);
+            p.addLast("httpAggregator", new HttpObjectAggregator(maxContentLength));
 
             // inbound
             p.addLast("httpExpectContinue", new HttpServerExpectContinueHandler());
@@ -267,7 +269,16 @@ public class SearchServer extends AbstractServer {
 
     }
 
-    public SearchServer(final int port, final SslContext sslCtx, final Search search) {
-        super(port, new SearchServerInitializer(sslCtx, search));
+    private Search search;
+
+    public SearchServer(final Configuration configuration, final Search search) {
+        super(configuration);
+        this.search = search;
     }
+
+    @Override
+    protected ChannelHandler configureChannelHandler(final SslContext sslContext) {
+        return new SearchServerInitializer(sslContext);
+    }
+
 }
