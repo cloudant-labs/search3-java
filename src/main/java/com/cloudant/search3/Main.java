@@ -15,18 +15,17 @@
 package com.cloudant.search3;
 
 import java.io.File;
+import java.util.Collections;
+import java.util.List;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.builder.fluent.Configurations;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import io.grpc.Server;
-import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
-import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
-import io.grpc.netty.shaded.io.netty.handler.ssl.ClientAuth;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.ClientAuth;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 
 public class Main {
 
@@ -40,56 +39,41 @@ public class Main {
         LOGGER = LogManager.getLogger();
 
         final boolean tlsEnabled = config.getBoolean("tls.enabled", true);
+        final List<String> tlsProtocols = config.getList(String.class, "tls.protocols", Collections.singletonList("TLSv1.2"));
 
-        final SslContext grpcSslContext;
-        final SslContext metricsSslContext;
+        final SslContext sslContext;
         if (tlsEnabled) {
             final File certChainFile = new File(config.getString("tls.cert_file"));
             // Key needs to be in PKCS8 format for Netty for some bizarre reason.
             final File privateKeyFile = new File(config.getString("tls.key_file"));
             final File clientCAFile = new File(config.getString("tls.ca_file"));
 
-            grpcSslContext = GrpcSslContexts.forServer(certChainFile, privateKeyFile)
-                    .protocols("TLSv1.2", "TLSv1.3").trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
-
-            metricsSslContext = SslContextBuilder.forServer(certChainFile, privateKeyFile)
-                    .protocols("TLSv1.2", "TLSv1.3").trustManager(clientCAFile).clientAuth(ClientAuth.REQUIRE).build();
+            sslContext = SslContextBuilder
+                .forServer(certChainFile, privateKeyFile)
+                .protocols(tlsProtocols)
+                .trustManager(clientCAFile)
+                .clientAuth(ClientAuth.REQUIRE)
+                .build();
         } else {
-            grpcSslContext = null;
-            metricsSslContext = null;
+            sslContext = null;
         }
 
         // Start metrics first.
         final int metricsPort = config.getInt("metrics.port", 1234);
-        final MetricsServer metricsServer = new MetricsServer(metricsPort, metricsSslContext);
+        final MetricsServer metricsServer = new MetricsServer(metricsPort, sslContext);
         LOGGER.info("Metrics Server started on port {} {} TLS.", metricsPort, tlsEnabled ? "with" : "without");
         metricsServer.start();
 
-        final int grpcPort = config.getInt("listen.port");
+        // Start search next.
+        final int searchPort = config.getInt("listen.port");
+        final SearchServer searchServer = new SearchServer(searchPort, sslContext, Search.create(config));
+        LOGGER.info("Search Server started on port {} {} TLS.", searchPort, tlsEnabled ? "with" : "without");
+        searchServer.start();
 
-        final NettyServerBuilder builder = NettyServerBuilder.forPort(grpcPort);
-        builder.addService(Search.create(config));
-        builder.addService(new Health());
-
-        if (tlsEnabled) {
-            builder.sslContext(grpcSslContext);
-        }
-
-        final Server server = builder.build();
-
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            @Override
-            public void run() {
-                server.shutdown();
-            }
-        });
-
-        server.start();
-        LOGGER.info("Server started on port {} {} TLS.", grpcPort, tlsEnabled ? "with" : "without");
-        server.awaitTermination();
-        LOGGER.info("Server terminated.");
-
+        searchServer.stop();
         metricsServer.stop();
+
+        LOGGER.info("Server terminated.");
     }
 
 }

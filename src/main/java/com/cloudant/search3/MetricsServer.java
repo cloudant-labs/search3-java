@@ -14,12 +14,12 @@
 
 package com.cloudant.search3;
 
-import static io.grpc.netty.shaded.io.netty.handler.codec.http.HttpHeaderNames.CONNECTION;
-import static io.grpc.netty.shaded.io.netty.handler.codec.http.HttpHeaderNames.CONTENT_LENGTH;
-import static io.grpc.netty.shaded.io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
-import static io.grpc.netty.shaded.io.netty.handler.codec.http.HttpHeaderValues.CLOSE;
-import static io.grpc.netty.shaded.io.netty.handler.codec.http.HttpHeaderValues.KEEP_ALIVE;
-import static io.grpc.netty.shaded.io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONNECTION;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_LENGTH;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
+import static io.netty.handler.codec.http.HttpHeaderValues.CLOSE;
+import static io.netty.handler.codec.http.HttpHeaderValues.KEEP_ALIVE;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -30,39 +30,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import io.grpc.netty.shaded.io.netty.bootstrap.ServerBootstrap;
-import io.grpc.netty.shaded.io.netty.buffer.ByteBuf;
-import io.grpc.netty.shaded.io.netty.buffer.Unpooled;
-import io.grpc.netty.shaded.io.netty.channel.Channel;
-import io.grpc.netty.shaded.io.netty.channel.ChannelFuture;
-import io.grpc.netty.shaded.io.netty.channel.ChannelFutureListener;
-import io.grpc.netty.shaded.io.netty.channel.ChannelHandlerContext;
-import io.grpc.netty.shaded.io.netty.channel.ChannelInitializer;
-import io.grpc.netty.shaded.io.netty.channel.ChannelOption;
-import io.grpc.netty.shaded.io.netty.channel.ChannelPipeline;
-import io.grpc.netty.shaded.io.netty.channel.EventLoopGroup;
-import io.grpc.netty.shaded.io.netty.channel.SimpleChannelInboundHandler;
-import io.grpc.netty.shaded.io.netty.channel.nio.NioEventLoopGroup;
-import io.grpc.netty.shaded.io.netty.channel.socket.SocketChannel;
-import io.grpc.netty.shaded.io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.grpc.netty.shaded.io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.grpc.netty.shaded.io.netty.handler.codec.http.FullHttpResponse;
-import io.grpc.netty.shaded.io.netty.handler.codec.http.HttpObject;
-import io.grpc.netty.shaded.io.netty.handler.codec.http.HttpRequest;
-import io.grpc.netty.shaded.io.netty.handler.codec.http.HttpServerCodec;
-import io.grpc.netty.shaded.io.netty.handler.codec.http.HttpServerExpectContinueHandler;
-import io.grpc.netty.shaded.io.netty.handler.codec.http.HttpUtil;
-import io.grpc.netty.shaded.io.netty.handler.codec.http.QueryStringDecoder;
-import io.grpc.netty.shaded.io.netty.handler.logging.LogLevel;
-import io.grpc.netty.shaded.io.netty.handler.logging.LoggingHandler;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpObject;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.HttpServerExpectContinueHandler;
+import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.ssl.SslContext;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.exporter.common.TextFormat;
 import io.prometheus.client.hotspot.DefaultExports;
 
-public class MetricsServer {
+public class MetricsServer extends AbstractServer {
 
-    private static class HttpHelloWorldServerHandler extends SimpleChannelInboundHandler<HttpObject> {
+    private static class MetricsServerHandler extends SimpleChannelInboundHandler<HttpObject> {
 
         @Override
         public void channelReadComplete(ChannelHandlerContext ctx) {
@@ -147,42 +139,15 @@ public class MetricsServer {
             }
             p.addLast(new HttpServerCodec());
             p.addLast(new HttpServerExpectContinueHandler());
-            p.addLast(new HttpHelloWorldServerHandler());
+            p.addLast(new MetricsServerHandler());
         }
 
     }
 
-    private final int port;
-    private final SslContext sslCtx;
-
-    private EventLoopGroup bossGroup;
-    private EventLoopGroup workerGroup;
-    private Channel ch;
-
     public MetricsServer(final int port, final SslContext sslCtx) {
-        this.port = port;
-        this.sslCtx = sslCtx;
-    }
-
-    public void start() throws Exception {
+        super(port, new HttpHelloWorldServerInitializer(sslCtx));
         // add included collectors
         DefaultExports.initialize();
-
-        // Configure the server.
-        bossGroup = new NioEventLoopGroup(1);
-        workerGroup = new NioEventLoopGroup();
-        ServerBootstrap b = new ServerBootstrap();
-        b.option(ChannelOption.SO_BACKLOG, 1024);
-        b.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class).handler(new LoggingHandler(LogLevel.INFO))
-                .childHandler(new HttpHelloWorldServerInitializer(sslCtx));
-
-        ch = b.bind(port).sync().channel();
-    }
-
-    public void stop() throws InterruptedException {
-        ch.closeFuture().sync();
-        bossGroup.shutdownGracefully();
-        workerGroup.shutdownGracefully();
     }
 
 }

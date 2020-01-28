@@ -45,4 +45,6 @@ public interface SearchHandler {
     SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException;
 
     SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException;
+
+    boolean hasUncommittedChanges();
 }

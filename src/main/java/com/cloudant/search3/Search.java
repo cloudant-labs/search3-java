@@ -14,16 +14,19 @@
 
 package com.cloudant.search3;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.configuration2.Configuration;
-import org.apache.commons.jcs.utils.struct.LRUMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
@@ -48,31 +51,44 @@ import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
-import com.cloudant.search3.grpc.SearchGrpc;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
 import com.google.protobuf.ByteString;
-import com.google.protobuf.Empty;
 
-import io.grpc.Status;
-import io.grpc.StatusException;
-import io.grpc.stub.StreamObserver;
-
-public final class Search extends SearchGrpc.SearchImplBase implements Closeable {
+public final class Search implements Closeable {
 
     @FunctionalInterface
-    interface LuceneConsumer<T> {
+    interface LuceneFunction<T,R> {
 
-        void accept(final T t) throws IOException, ParseException;
+        R apply(final T t) throws IOException, ParseException;
 
     }
 
     private static final Logger LOGGER = LogManager.getLogger();
 
-    private class CommitOrCloseTask implements Runnable {
+    private static class CleanupTask implements Runnable {
+
+        private final LoadingCache<?,?> cache;
+
+        private CleanupTask(final LoadingCache<?,?> cache) {
+            this.cache = cache;
+        }
+
+        public void run() {
+            cache.cleanUp();
+        }
+
+    }
+
+    private class CommitTask implements Runnable {
 
         private final Subspace index;
         private final SearchHandler handler;
 
-        private CommitOrCloseTask(final Subspace index, final SearchHandler handler) {
+        private CommitTask(final Subspace index, final SearchHandler handler) {
             this.index = index;
             this.handler = handler;
         }
@@ -80,48 +96,100 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         @Override
         public void run() {
             try {
-                if (idle) {
-                    throw new IdleHandlerException();
-                }
-                idle = true;
-
-                if (dirty) {
+                if (handler.hasUncommittedChanges()) {
                     handler.commit();
-                    dirty = false;
                 }
             } catch (final IOException e) {
                 failedHandler(index, e);
-                throw new RuntimeException(e);
             }
         }
 
     }
 
-    private static class SearchHandlerLRUMap extends LRUMap<Subspace, SearchHandler> {
+    /**
+     * Only use the index prefix for equality check so that an
+     * Index message with and without a session are considered the same.
+     */
+    private static class SearchCacheKey {
 
-        public SearchHandlerLRUMap(int maxObjects) {
-            super(maxObjects);
+        private final Index index;
+
+        private SearchCacheKey(final Index index) {
+            this.index = index;
         }
 
         @Override
-        protected void processRemovedLRU(Subspace key, SearchHandler value) {
-            try {
-                value.close();
-                LOGGER.info("LRU closed {}", value);
-            } catch (final IOException e) {
-                LOGGER.warn("IOException when closing handler", e);
-            }
+        public int hashCode() {
+            final ByteString prefix = index.getPrefix();
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + ((prefix == null) ? 0 : prefix.hashCode());
+            return result;
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj)
+                return true;
+            if (obj == null)
+                return false;
+            if (getClass() != obj.getClass())
+                return false;
+            SearchCacheKey other = (SearchCacheKey) obj;
+            if (index.getPrefix() == null) {
+                if (other.index.getPrefix() != null)
+                    return false;
+            } else if (!index.getPrefix().equals(other.index.getPrefix()))
+                return false;
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            return index.toString();
+        }
+
     }
 
-    private static final Empty EMPTY = Empty.getDefaultInstance();
+    private class SearchCacheLoader extends CacheLoader<SearchCacheKey, SearchHandler> {
+
+        @Override
+        public SearchHandler load(final SearchCacheKey key) throws Exception {
+            final Subspace subspace = toSubspace(key.index);
+            final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(key.index);
+            final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
+            final ScheduledFuture<?> commitFuture = scheduler.scheduleWithFixedDelay(
+                    new CommitTask(subspace, result),
+                    commitIntervalSecs,
+                    commitIntervalSecs,
+                    TimeUnit.SECONDS);
+            commitFutures.put(key, commitFuture);
+            LOGGER.info("Opened index {}", result);
+            return result;
+        }
+
+    }
+
+    private class SearchRemovalListener implements RemovalListener<SearchCacheKey, SearchHandler> {
+
+        @Override
+        public void onRemoval(final RemovalNotification<SearchCacheKey, SearchHandler> notification) {
+            try {
+                commitFutures.remove(notification.getKey()).cancel(false);
+                notification.getValue().close();
+                LOGGER.info("Closed handler for index {} for reason {}.",  notification.getValue(), notification.getCause());
+            } catch (final IOException e) {
+                LOGGER.error("I/O exception while closing evicted index " + notification.getValue(), e);
+            }
+        }
+
+    }
 
     private final Database db;
     private final ScheduledExecutorService scheduler;
     private final SearchHandlerFactory searchHandlerFactory;
-    private final Map<Subspace, SearchHandler> handlers;
-    private boolean idle = true;
-    private boolean dirty = false;
+    private final LoadingCache<SearchCacheKey, SearchHandler> handlers;
+    private final Map<SearchCacheKey, ScheduledFuture<?>> commitFutures;
     private final int commitIntervalSecs;
 
     public static Search create(final Configuration config) throws Exception {
@@ -136,120 +204,80 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         final ScheduledExecutorService scheduler = Executors
                 .newScheduledThreadPool(config.getInt("scheduler_thread_count"));
 
-        final Map<Subspace, SearchHandler> handlers = new SearchHandlerLRUMap(config.getInt("max_indexes_open"));
-
+        final String cacheConfig = config.getString("cache.handler_config");
         final int commitIntervalSecs = config.getInt("commit_interval_secs");
 
-        return new Search(db, searchHandlerFactory, scheduler, handlers, commitIntervalSecs);
+        return new Search(db, searchHandlerFactory, scheduler, cacheConfig, commitIntervalSecs);
     }
 
     private Search(final Database db, final SearchHandlerFactory searchHandlerFactory,
-            final ScheduledExecutorService scheduler, final Map<Subspace, SearchHandler> handlers,
+            final ScheduledExecutorService scheduler, final String cacheConfig,
             final int commitIntervalSecs) {
         this.db = db;
         this.searchHandlerFactory = searchHandlerFactory;
         this.scheduler = scheduler;
-        this.handlers = handlers;
+        this.handlers = CacheBuilder
+                .from(cacheConfig)
+                .removalListener(new SearchRemovalListener())
+                .build(new SearchCacheLoader());
         this.commitIntervalSecs = commitIntervalSecs;
+        this.commitFutures = new ConcurrentHashMap<SearchCacheKey, ScheduledFuture<?>>();
+        scheduler.scheduleWithFixedDelay(new CleanupTask(handlers), commitIntervalSecs, commitIntervalSecs, SECONDS);
     }
 
-    @Override
-    public void delete(final Index request, final StreamObserver<Empty> responseObserver) {
+    public void delete(final Index request) throws IOException {
         final Subspace subspace = toSubspace(request);
-        try {
-            db.run(txn -> {
-                txn.clear(subspace.range());
-                return null;
-            });
-            final SearchHandler handler = handlers.remove(subspace);
-            if (handler != null) {
-                handler.close();
-            }
-            responseObserver.onNext(EMPTY);
-            responseObserver.onCompleted();
-            LOGGER.info("Deleted index {}.", subspace);
-        } catch (final IOException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final RuntimeException e) {
-            LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-        }
+        db.run(txn -> {
+            txn.clear(subspace.range());
+            return null;
+        });
+        handlers.invalidate(subspace);
     }
 
-    @Override
-    public void info(final Index request, final StreamObserver<InfoResponse> responseObserver) {
-        execute(request, responseObserver, handler -> {
-            responseObserver.onNext(handler.info(request));
-            responseObserver.onCompleted();
-            idle = false;
+    public InfoResponse info(final Index request) throws Exception {
+        return execute(request, handler -> {
+            final InfoResponse response = handler.info(request);
+            return response;
         });
     }
 
-    @Override
-    public void setUpdateSequence(final SetUpdateSeqRequest request, final StreamObserver<SessionResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
-            final SessionResponse response = handler.setUpdateSeq(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
-            dirty = true;
-            idle = false;
+    public SessionResponse setUpdateSequence(final SetUpdateSeqRequest request) throws Exception {
+        return execute(request.getIndex(), handler -> {
+            return handler.setUpdateSeq(request);
         });
     }
 
-    @Override
-    public void search(final SearchRequest request, final StreamObserver<SearchResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
-            final SearchResponse response = handler.search(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
-            idle = false;
+    public SearchResponse search(final SearchRequest request) throws Exception {
+        return execute(request.getIndex(), handler -> {
+            return handler.search(request);
         });
     }
 
-    @Override
-    public void groupSearch(
-            final GroupSearchRequest request,
-            final StreamObserver<GroupSearchResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
-            final GroupSearchResponse response = handler.groupSearch(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
-            idle = false;
+    public GroupSearchResponse groupSearch(final GroupSearchRequest request) throws Exception {
+        return execute(request.getIndex(), handler -> {
+            return handler.groupSearch(request);
         });
     }
 
-    @Override
-    public void updateDocument(final DocumentUpdateRequest request, final StreamObserver<SessionResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
-            final SessionResponse response = handler.updateDocument(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
-            dirty = true;
-            idle = false;
+    public SessionResponse updateDocument(final DocumentUpdateRequest request) throws Exception {
+        return execute(request.getIndex(), handler -> {
+            return handler.updateDocument(request);
         });
     }
 
-    @Override
-    public void deleteDocument(final DocumentDeleteRequest request, final StreamObserver<SessionResponse> responseObserver) {
-        execute(request.getIndex(), responseObserver, handler -> {
-            final SessionResponse response = handler.deleteDocument(request);
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
-            dirty = true;
-            idle = false;
+    public SessionResponse deleteDocument(final DocumentDeleteRequest request) throws Exception {
+        return execute(request.getIndex(), handler -> {
+            return handler.deleteDocument(request);
         });
     }
 
-    @Override
-    public void analyze(final AnalyzeRequest request, final StreamObserver<AnalyzeResponse> responseObserver) {
+    public AnalyzeResponse analyze(final AnalyzeRequest request) throws IOException {
         final Analyzer analyzer;
         try {
             analyzer = SupportedAnalyzers.single(request.getAnalyzer());
         } catch (final IllegalArgumentException e) {
             LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
-            return;
+            throw e;
         }
 
         try (final TokenStream stream = analyzer.tokenStream(null, request.getText())) {
@@ -261,11 +289,10 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
                 builder.addTokens(term.utf8ToString());
             }
             stream.end();
-            responseObserver.onNext(builder.build());
-            responseObserver.onCompleted();
+            return builder.build();
         } catch (final IOException e) {
             LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
+            throw e;
         }
     }
 
@@ -277,61 +304,25 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         } catch (final InterruptedException e) {
             // Ignored.
         }
-        handlers.forEach((index, handler) -> {
-            try {
-                handler.close();
-            } catch (final IOException e) {
-                LOGGER.catching(e);
-            }
-        });
-        handlers.clear();
+        handlers.invalidateAll();
     }
 
-    private <T> void execute(
+    private <R> R execute(
             final Index index,
-            final StreamObserver<T> responseObserver,
-            final LuceneConsumer<SearchHandler> f) {
+            final LuceneFunction<SearchHandler, R> f) throws IOException, ParseException, ExecutionException {
         try {
-            final SearchHandler handler = getOrOpen(index);
-            f.accept(handler);
-        } catch (final IOException | AlreadyClosedException e) {
+            final SearchHandler handler = handlers.get(new SearchCacheKey(index));
+            return f.apply(handler);
+        } catch (final IOException | AlreadyClosedException | ExecutionException e) {
             failedHandler(index, e);
-            responseObserver.onError(fromThrowable(e));
-        } catch (final ParseException e) {
-            responseObserver.onError(fromThrowable(e));
-        } catch (final SessionMismatchException e) {
-            responseObserver.onError(fromThrowable(e));
+            throw e;
         } catch (final RuntimeException e) {
             LOGGER.catching(e);
-            responseObserver.onError(fromThrowable(e));
+            throw e;
         }
     }
 
-    private SearchHandler getOrOpen(final Index index) throws IOException {
-        final Subspace subspace = toSubspace(index);
-        final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(index);
-
-        try {
-            return handlers.computeIfAbsent(subspace, key -> {
-                try {
-                    final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
-                    scheduler.scheduleWithFixedDelay(
-                            new CommitOrCloseTask(subspace, result),
-                            commitIntervalSecs,
-                            commitIntervalSecs,
-                            TimeUnit.SECONDS);
-                    LOGGER.info("Opened index {}", result);
-                    return result;
-                } catch (final IOException e) {
-                    throw new FailedHandlerOpenException(e);
-                }
-            });
-        } catch (final FailedHandlerOpenException e) {
-            throw (IOException) e.getCause();
-        }
-    }
-
-    private Subspace toSubspace(final Index index) {
+    private static Subspace toSubspace(final Index index) {
         final ByteString prefix = index.getPrefix();
         if (prefix.isEmpty()) {
             throw new IllegalArgumentException("Index prefix not specified.");
@@ -339,37 +330,13 @@ public final class Search extends SearchGrpc.SearchImplBase implements Closeable
         return new Subspace(prefix.toByteArray());
     }
 
-    private StatusException fromThrowable(final Throwable t) {
-        final Status status;
-        if (t instanceof ParseException) {
-            status = Status.INVALID_ARGUMENT;
-        } else if (t instanceof IOException) {
-            status = Status.ABORTED;
-        } else if (t instanceof IllegalArgumentException) {
-            status = Status.INVALID_ARGUMENT;
-        } else if (t instanceof IllegalStateException) {
-            status = Status.FAILED_PRECONDITION;
-        } else {
-            status = Status.fromThrowable(t);
-        }
-        return status.withDescription(t.getMessage()).asException();
-    }
-
     private void failedHandler(final Index index, final Exception e) {
         failedHandler(toSubspace(index), e);
     }
 
     private void failedHandler(final Subspace index, final Exception e) {
-        final SearchHandler handler = handlers.remove(index);
-        try {
-            if (handler != null) {
-                handler.close();
-            }
-            LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
-        } catch (final IOException e1) {
-            LOGGER.warn("Ignoring exception thrown while closing failed handler", e1);
-        }
-
+        handlers.invalidate(index);
+        LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
     }
 
 }

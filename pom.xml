@@ -29,7 +29,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <lucene-version>8.3.0</lucene-version>
-    <grpc-version>1.21.0</grpc-version>
+    <netty-version>4.1.45.Final</netty-version>
     <log4j-version>2.12.0</log4j-version>
     <prometheus-version>0.6.0</prometheus-version>
   </properties>
@@ -91,6 +91,13 @@
       <version>${lucene-version}</version>
     </dependency>
 
+    <!-- Guava -->
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+      <version>28.2-jre</version>
+    </dependency>
+
     <!-- Commons Configuration plus runtime deps -->
     <dependency>
       <groupId>org.apache.commons</groupId>
@@ -121,32 +128,24 @@
       <artifactId>log4j-jul</artifactId>
     </dependency>
 
-    <!-- GRPC -->
+    <!-- Netty -->
     <dependency>
-      <groupId>io.grpc</groupId>
-      <artifactId>grpc-netty-shaded</artifactId>
-      <version>${grpc-version}</version>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-all</artifactId>
+      <version>${netty-version}</version>
     </dependency>
     <dependency>
-      <groupId>io.grpc</groupId>
-      <artifactId>grpc-core</artifactId>
-      <version>${grpc-version}</version>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-tcnative</artifactId>
+      <version>2.0.28.Final</version>
+      <classifier>${os.detected.classifier}</classifier>
     </dependency>
+
+    <!-- Protocol Buffers -->
     <dependency>
-      <groupId>io.grpc</groupId>
-      <artifactId>grpc-protobuf</artifactId>
-      <version>${grpc-version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.grpc</groupId>
-      <artifactId>grpc-stub</artifactId>
-      <version>${grpc-version}</version>
-    </dependency>
-    <dependency>
-      <groupId>javax.annotation</groupId>
-      <artifactId>javax.annotation-api</artifactId>
-      <version>1.2</version>
-      <scope>provided</scope> <!-- not needed at runtime -->
+      <groupId>com.google.protobuf</groupId>
+      <artifactId>protobuf-java</artifactId>
+      <version>3.11.1</version>
     </dependency>
 
     <!-- Prometheus (metrics) -->
@@ -239,15 +238,13 @@
         <artifactId>protobuf-maven-plugin</artifactId>
         <version>0.6.1</version>
         <configuration>
-          <protocArtifact>com.google.protobuf:protoc:3.7.1:exe:${os.detected.classifier}</protocArtifact>
-          <pluginId>grpc-java</pluginId>
-          <pluginArtifact>io.grpc:protoc-gen-grpc-java:1.21.0:exe:${os.detected.classifier}</pluginArtifact>
+          <protocExecutable>/usr/local/bin/protoc</protocExecutable>
         </configuration>
         <executions>
           <execution>
             <goals>
               <goal>compile</goal>
-              <goal>compile-custom</goal>
+              <goal>test-compile</goal>
             </goals>
           </execution>
         </executions>

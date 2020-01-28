@@ -271,6 +271,11 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
         }
     }
 
+    @Override
+    public boolean hasUncommittedChanges() {
+        return this.pendingUpdateSeq != null || this.pendingPurgeSeq != null;
+    }
+
     private static Map<String, String> getLiveCommitData(final IndexWriter writer) {
         final Map<String, String> result = new HashMap<String, String>();
         final Iterable<Entry<String, String>> it = writer.getLiveCommitData();

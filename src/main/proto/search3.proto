@@ -2,25 +2,6 @@
 
 syntax = "proto3";
 option java_package = "com.cloudant.search3.grpc";
-import "google/protobuf/empty.proto";
-
-service Search {
-    // Index operations
-    rpc Delete(Index) returns (google.protobuf.Empty);
-    rpc Info(Index) returns (InfoResponse);
-
-    // Read operations
-    rpc Search(SearchRequest) returns (SearchResponse);
-    rpc GroupSearch(GroupSearchRequest) returns (GroupSearchResponse);
-
-    // Write operations
-    rpc UpdateDocument(DocumentUpdateRequest) returns (SessionResponse);
-    rpc DeleteDocument(DocumentDeleteRequest) returns (SessionResponse);
-    rpc SetUpdateSequence(SetUpdateSeqRequest) returns (SessionResponse);
-
-    // Non-index operations
-    rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
-}
 
 message Index {
     bytes prefix = 1;
@@ -190,4 +171,15 @@ message AnalyzeRequest {
 
 message AnalyzeResponse {
     repeated string tokens = 1;
+}
+
+message ErrorResponse {
+    enum Type {
+        CLIENT_ERROR = 0;
+        SERVER_ERROR = 1;
+        SESSION_MISMATCH = 2;
+        UNKNOWN = 3;
+    }
+    Type type = 1;
+    string reason = 2;
 }
