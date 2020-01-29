@@ -5,14 +5,15 @@ option java_package = "com.cloudant.search3.grpc";
 
 message Index {
     bytes prefix = 1;
-    string session = 2;
-    AnalyzerSpec default = 3;
-	map<string, AnalyzerSpec> per_field = 4;
+    string sig = 2;
+    string session = 3;
+    AnalyzerSpec default = 4;
+    map<string, AnalyzerSpec> per_field = 5;
 }
 
 message AnalyzerSpec {
-	string name = 1;
-	repeated string stopwords = 2;
+    string name = 1;
+    repeated string stopwords = 2;
 }
 
 message UpdateSeq {
