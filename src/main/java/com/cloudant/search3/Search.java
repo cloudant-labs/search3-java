@@ -85,11 +85,11 @@ public final class Search implements Closeable {
 
     private class CommitTask implements Runnable {
 
-        private final Subspace index;
+        private final SearchCacheKey key;
         private final SearchHandler handler;
 
-        private CommitTask(final Subspace index, final SearchHandler handler) {
-            this.index = index;
+        private CommitTask(final SearchCacheKey key, final SearchHandler handler) {
+            this.key = key;
             this.handler = handler;
         }
 
@@ -100,7 +100,8 @@ public final class Search implements Closeable {
                     handler.commit();
                 }
             } catch (final IOException e) {
-                failedHandler(index, e);
+                LOGGER.warn("I/O exception for index " + key + " while committing", e);
+                handlers.invalidate(key);
             }
         }
 
@@ -159,7 +160,7 @@ public final class Search implements Closeable {
             final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(key.index);
             final SearchHandler result = searchHandlerFactory.open(db, subspace, analyzer);
             final ScheduledFuture<?> commitFuture = scheduler.scheduleWithFixedDelay(
-                    new CommitTask(subspace, result),
+                    new CommitTask(key, result),
                     commitIntervalSecs,
                     commitIntervalSecs,
                     TimeUnit.SECONDS);
@@ -213,7 +214,7 @@ public final class Search implements Closeable {
             txn.clear(subspace.range());
             return null;
         });
-        handlers.invalidate(subspace);
+        handlers.invalidate(new SearchCacheKey(request));
     }
 
     public InfoResponse info(final Index request) throws Exception {
@@ -292,11 +293,13 @@ public final class Search implements Closeable {
     private <R> R execute(
             final Index index,
             final LuceneFunction<SearchHandler, R> f) throws IOException, ParseException, ExecutionException {
+        final SearchCacheKey key = new SearchCacheKey(index);
         try {
-            final SearchHandler handler = handlers.get(new SearchCacheKey(index));
+            final SearchHandler handler = handlers.get(key);
             return f.apply(handler);
         } catch (final IOException | AlreadyClosedException | ExecutionException e) {
-            failedHandler(index, e);
+            LOGGER.warn("Invalidating handler for index {} for reason {}.", toSubspace(index), e.getMessage());
+            handlers.invalidate(key);
             throw e;
         } catch (final RuntimeException e) {
             LOGGER.catching(e);
@@ -310,15 +313,6 @@ public final class Search implements Closeable {
             throw new IllegalArgumentException("Index prefix not specified.");
         }
         return new Subspace(prefix.toByteArray());
-    }
-
-    private void failedHandler(final Index index, final Exception e) {
-        failedHandler(toSubspace(index), e);
-    }
-
-    private void failedHandler(final Subspace index, final Exception e) {
-        handlers.invalidate(index);
-        LOGGER.warn("Closed handler for index {} for reason {}.", index, e.getMessage());
     }
 
 }
