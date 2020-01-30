@@ -21,27 +21,27 @@ import org.junit.Test;
 
 public class DocumentBuilderTest {
 
-    @Test
-    public void addBoolean() throws Exception {
-        final DocumentBuilder builder = new DocumentBuilder();
-        builder.addBoolean("foo", true, true);
-        final Document doc = builder.build();
-        assertEquals("true", doc.get("foo"));
-    }
+  @Test
+  public void addBoolean() throws Exception {
+    final DocumentBuilder builder = new DocumentBuilder();
+    builder.addBoolean("foo", true, true);
+    final Document doc = builder.build();
+    assertEquals("true", doc.get("foo"));
+  }
 
-    @Test
-    public void addDouble() throws Exception {
-        final DocumentBuilder builder = new DocumentBuilder();
-        builder.addDouble("foo", 3.41, true);
-        final Document doc = builder.build();
-        assertEquals(3, doc.getFields().size());
-    }
+  @Test
+  public void addDouble() throws Exception {
+    final DocumentBuilder builder = new DocumentBuilder();
+    builder.addDouble("foo", 3.41, true);
+    final Document doc = builder.build();
+    assertEquals(3, doc.getFields().size());
+  }
 
-    @Test
-    public void addText() throws Exception {
-        final DocumentBuilder builder = new DocumentBuilder();
-        builder.addText("foo", "bar", false, false);
-        final Document doc = builder.build();
-        assertEquals(2, doc.getFields().size());
-    }
+  @Test
+  public void addText() throws Exception {
+    final DocumentBuilder builder = new DocumentBuilder();
+    builder.addText("foo", "bar", false, false);
+    final Document doc = builder.build();
+    assertEquals(2, doc.getFields().size());
+  }
 }

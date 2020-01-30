@@ -19,38 +19,34 @@ package com.cloudant.search3;
 
 import java.util.Collections;
 import java.util.Map;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.DelegatingAnalyzerWrapper;
 
-/**
- * Identical to PerFieldAnalyzerWrapper except public.
- */
+/** Identical to PerFieldAnalyzerWrapper except public. */
 public final class PerFieldAnalyzer extends DelegatingAnalyzerWrapper {
 
-    private final Analyzer defaultAnalyzer;
-    private final Map<String, Analyzer> fieldAnalyzers;
+  private final Analyzer defaultAnalyzer;
+  private final Map<String, Analyzer> fieldAnalyzers;
 
-    public PerFieldAnalyzer(Analyzer defaultAnalyzer,
-            Map<String, Analyzer> fieldAnalyzers) {
-          super(PER_FIELD_REUSE_STRATEGY);
-          this.defaultAnalyzer = defaultAnalyzer;
-          this.fieldAnalyzers = (fieldAnalyzers != null) ? fieldAnalyzers : Collections.<String, Analyzer>emptyMap();
-        }
+  public PerFieldAnalyzer(Analyzer defaultAnalyzer, Map<String, Analyzer> fieldAnalyzers) {
+    super(PER_FIELD_REUSE_STRATEGY);
+    this.defaultAnalyzer = defaultAnalyzer;
+    this.fieldAnalyzers =
+        (fieldAnalyzers != null) ? fieldAnalyzers : Collections.<String, Analyzer>emptyMap();
+  }
 
-    public Analyzer getDefault() {
-        return defaultAnalyzer;
-    }
+  public Analyzer getDefault() {
+    return defaultAnalyzer;
+  }
 
-    @Override
-    public Analyzer getWrappedAnalyzer(String fieldName) {
-        Analyzer analyzer = fieldAnalyzers.get(fieldName);
-        return (analyzer != null) ? analyzer : defaultAnalyzer;
-    }
+  @Override
+  public Analyzer getWrappedAnalyzer(String fieldName) {
+    Analyzer analyzer = fieldAnalyzers.get(fieldName);
+    return (analyzer != null) ? analyzer : defaultAnalyzer;
+  }
 
-    @Override
-    public String toString() {
-        return "PerFieldAnalyzerWrapper(" + fieldAnalyzers + ", default=" + defaultAnalyzer + ")";
-    }
-
+  @Override
+  public String toString() {
+    return "PerFieldAnalyzerWrapper(" + fieldAnalyzers + ", default=" + defaultAnalyzer + ")";
+  }
 }

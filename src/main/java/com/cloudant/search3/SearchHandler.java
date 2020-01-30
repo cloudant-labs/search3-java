@@ -14,10 +14,6 @@
 
 package com.cloudant.search3;
 
-import java.io.IOException;
-
-import org.apache.lucene.queryparser.classic.ParseException;
-
 import com.cloudant.search3.grpc.Search3.DocumentDeleteRequest;
 import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
@@ -28,23 +24,25 @@ import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
 import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
+import java.io.IOException;
+import org.apache.lucene.queryparser.classic.ParseException;
 
 public interface SearchHandler {
-    void close() throws IOException;
+  void close() throws IOException;
 
-    void commit() throws IOException;
+  void commit() throws IOException;
 
-    SessionResponse deleteDocument(final DocumentDeleteRequest request) throws IOException;
+  SessionResponse deleteDocument(final DocumentDeleteRequest request) throws IOException;
 
-    GroupSearchResponse groupSearch(GroupSearchRequest request) throws IOException, ParseException;
+  GroupSearchResponse groupSearch(GroupSearchRequest request) throws IOException, ParseException;
 
-    InfoResponse info(final Index index) throws IOException;
+  InfoResponse info(final Index index) throws IOException;
 
-    SearchResponse search(final SearchRequest request) throws IOException, ParseException;
+  SearchResponse search(final SearchRequest request) throws IOException, ParseException;
 
-    SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException;
+  SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException;
 
-    SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException;
+  SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException;
 
-    boolean hasUncommittedChanges();
+  boolean hasUncommittedChanges();
 }

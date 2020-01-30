@@ -14,15 +14,13 @@
 
 package com.cloudant.search3;
 
-import java.io.IOException;
-
-import org.apache.lucene.analysis.Analyzer;
-
 import com.apple.foundationdb.Database;
 import com.apple.foundationdb.subspace.Subspace;
+import java.io.IOException;
+import org.apache.lucene.analysis.Analyzer;
 
 public interface SearchHandlerFactory {
 
-    SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer) throws IOException;
-
+  SearchHandler open(final Database db, final Subspace index, final Analyzer analyzer)
+      throws IOException;
 }

@@ -17,6 +17,8 @@ package com.cloudant.search3;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.Assert.assertThat;
 
+import com.cloudant.search3.grpc.Search3.AnalyzerSpec;
+import com.cloudant.search3.grpc.Search3.Index;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.es.SpanishAnalyzer;
@@ -25,63 +27,59 @@ import org.apache.lucene.analysis.hu.HungarianAnalyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.junit.Test;
 
-import com.cloudant.search3.grpc.Search3.AnalyzerSpec;
-import com.cloudant.search3.grpc.Search3.Index;
-
 public class SupportedAnalyzersTest {
 
+  @Test
+  public void testEnglish() throws Exception {
+    assertDefault(single("english"), EnglishAnalyzer.class);
+  }
 
-    @Test
-    public void testEnglish() throws Exception {
-        assertDefault(single("english"), EnglishAnalyzer.class);
+  @Test
+  public void testStandard() throws Exception {
+    assertDefault(single("standard"), StandardAnalyzer.class);
+  }
+
+  @Test
+  public void testFinnish() throws Exception {
+    assertDefault(single("finnish"), FinnishAnalyzer.class);
+  }
+
+  @Test
+  public void testPerField() throws Exception {
+    final Index.Builder builder = Index.newBuilder();
+    builder.setDefault(spec("english"));
+    builder.putPerField("foo", spec("spanish"));
+    builder.putPerField("bar", spec("hungarian"));
+
+    final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(builder.build());
+    assertThat(analyzer, instanceOf(PerFieldAnalyzer.class));
+    assertField(analyzer, "foo", SpanishAnalyzer.class);
+    assertField(analyzer, "bar", HungarianAnalyzer.class);
+  }
+
+  private Analyzer single(final String name) {
+    final Index.Builder builder = Index.newBuilder();
+    builder.setDefault(spec(name));
+    return SupportedAnalyzers.createAnalyzer(builder.build());
+  }
+
+  private AnalyzerSpec spec(final String name, final String... stopwords) {
+    final AnalyzerSpec.Builder builder = AnalyzerSpec.newBuilder();
+    builder.setName(name);
+    for (final String stopword : stopwords) {
+      builder.addStopwords(stopword);
     }
+    return builder.build();
+  }
 
-    @Test
-    public void testStandard() throws Exception {
-        assertDefault(single("standard"), StandardAnalyzer.class);
-    }
+  private void assertDefault(final Analyzer analyzer, final Class<?> clazz) throws Exception {
+    assertThat(analyzer, instanceOf(PerFieldAnalyzer.class));
+    assertThat(((PerFieldAnalyzer) analyzer).getDefault(), instanceOf(clazz));
+  }
 
-    @Test
-    public void testFinnish() throws Exception {
-        assertDefault(single("finnish"), FinnishAnalyzer.class);
-    }
-
-    @Test
-    public void testPerField() throws Exception {
-        final Index.Builder builder = Index.newBuilder();
-        builder.setDefault(spec("english"));
-        builder.putPerField("foo", spec("spanish"));
-        builder.putPerField("bar", spec("hungarian"));
-
-        final Analyzer analyzer = SupportedAnalyzers.createAnalyzer(builder.build());
-        assertThat(analyzer, instanceOf(PerFieldAnalyzer.class));
-        assertField(analyzer, "foo", SpanishAnalyzer.class);
-        assertField(analyzer, "bar", HungarianAnalyzer.class);
-    }
-
-    private Analyzer single(final String name) {
-        final Index.Builder builder = Index.newBuilder();
-        builder.setDefault(spec(name));
-        return SupportedAnalyzers.createAnalyzer(builder.build());
-    }
-
-    private AnalyzerSpec spec(final String name, final String... stopwords) {
-        final AnalyzerSpec.Builder builder = AnalyzerSpec.newBuilder();
-        builder.setName(name);
-        for (final String stopword : stopwords) {
-            builder.addStopwords(stopword);
-        }
-        return builder.build();
-    }
-
-    private void assertDefault(final Analyzer analyzer, final Class<?> clazz) throws Exception {
-        assertThat(analyzer, instanceOf(PerFieldAnalyzer.class));
-        assertThat(((PerFieldAnalyzer) analyzer).getDefault(), instanceOf(clazz));
-    }
-
-    private void assertField(final Analyzer analyzer, final String fieldName, final Class<?> clazz) throws Exception {
-        assertThat(analyzer, instanceOf(PerFieldAnalyzer.class));
-        assertThat(((PerFieldAnalyzer) analyzer).getWrappedAnalyzer(fieldName), instanceOf(clazz));
-    }
-
+  private void assertField(final Analyzer analyzer, final String fieldName, final Class<?> clazz)
+      throws Exception {
+    assertThat(analyzer, instanceOf(PerFieldAnalyzer.class));
+    assertThat(((PerFieldAnalyzer) analyzer).getWrappedAnalyzer(fieldName), instanceOf(clazz));
+  }
 }
