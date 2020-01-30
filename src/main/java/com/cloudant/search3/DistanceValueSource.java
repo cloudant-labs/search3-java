@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -27,8 +27,8 @@ import org.locationtech.spatial4j.distance.DistanceCalculator;
 import org.locationtech.spatial4j.shape.Point;
 
 /*
- * This is lucene spatial's DistanceValueSource but with configurable x and y
- * field names to better suit our existing API.
+ * This is lucene spatial's DistanceValueSource but with configurable x and y field names to better
+ * suit our existing API.
  */
 public class DistanceValueSource extends DoubleValuesSource {
 
