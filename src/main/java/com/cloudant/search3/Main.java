@@ -14,45 +14,42 @@
 
 package com.cloudant.search3;
 
+import com.apple.foundationdb.FDB;
 import java.io.File;
-
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.INIConfiguration;
 import org.apache.commons.configuration2.builder.fluent.Configurations;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.apple.foundationdb.FDB;
-
 public class Main {
 
-    private static Logger LOGGER;
+  private static Logger LOGGER;
 
-    public static void main(String[] args) throws Exception {
-        final Configurations configurations = new Configurations();
-        final INIConfiguration configuration = configurations.ini(new File("search3.ini"));
-        final Configuration metricsConfiguration = configuration.configurationAt("metrics");
-        final Configuration searchConfiguration = configuration.configurationAt("search");
+  public static void main(String[] args) throws Exception {
+    final Configurations configurations = new Configurations();
+    final INIConfiguration configuration = configurations.ini(new File("search3.ini"));
+    final Configuration metricsConfiguration = configuration.configurationAt("metrics");
+    final Configuration searchConfiguration = configuration.configurationAt("search");
 
-        System.setProperty("java.util.logging.manager", "org.apache.logging.log4j.jul.LogManager");
-        LOGGER = LogManager.getLogger();
+    System.setProperty("java.util.logging.manager", "org.apache.logging.log4j.jul.LogManager");
+    LOGGER = LogManager.getLogger();
 
-        // Initialize FDB.
-        FDB.selectAPIVersion(configuration.getInt("fdb.version"));
+    // Initialize FDB.
+    FDB.selectAPIVersion(configuration.getInt("fdb.version"));
 
-        // Start metrics first.
-        final MetricsServer metricsServer = new MetricsServer(metricsConfiguration);
-        metricsServer.start();
+    // Start metrics first.
+    final MetricsServer metricsServer = new MetricsServer(metricsConfiguration);
+    metricsServer.start();
 
-        // Start search next.
-        final Search search = new Search(searchConfiguration);
-        final SearchServer searchServer = new SearchServer(searchConfiguration, search);
-        searchServer.start();
+    // Start search next.
+    final Search search = new Search(searchConfiguration);
+    final SearchServer searchServer = new SearchServer(searchConfiguration, search);
+    searchServer.start();
 
-        searchServer.stop();
-        metricsServer.stop();
+    searchServer.stop();
+    metricsServer.stop();
 
-        LOGGER.info("Server terminated.");
-    }
-
+    LOGGER.info("Server terminated.");
+  }
 }

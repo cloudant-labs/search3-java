@@ -14,39 +14,38 @@
 
 package com.cloudant.search3;
 
+import com.apple.foundationdb.Database;
+import com.apple.foundationdb.FDB;
+import com.apple.foundationdb.subspace.Subspace;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 
-import com.apple.foundationdb.Database;
-import com.apple.foundationdb.FDB;
-import com.apple.foundationdb.subspace.Subspace;
-
 public class BaseFDBTest {
 
-    protected static Database DB;
-    protected byte[] prefix;
-    protected Subspace subspace;
+  protected static Database DB;
+  protected byte[] prefix;
+  protected Subspace subspace;
 
-    @BeforeClass
-    public static void setupFDB() {
-        FDB.selectAPIVersion(600);
-        DB = FDB.instance().open();
-    }
+  @BeforeClass
+  public static void setupFDB() {
+    FDB.selectAPIVersion(600);
+    DB = FDB.instance().open();
+  }
 
-    @Before
-    public void setup() throws Exception {
-        prefix = new byte[] { 1, 2, 3 };
-        subspace = new Subspace(prefix);
-        cleanup();
-    }
+  @Before
+  public void setup() throws Exception {
+    prefix = new byte[] {1, 2, 3};
+    subspace = new Subspace(prefix);
+    cleanup();
+  }
 
-    @After
-    public void cleanup() throws Exception {
-        DB.run(txn -> {
-            txn.clear(subspace.range());
-            return null;
+  @After
+  public void cleanup() throws Exception {
+    DB.run(
+        txn -> {
+          txn.clear(subspace.range());
+          return null;
         });
-    }
-
+  }
 }

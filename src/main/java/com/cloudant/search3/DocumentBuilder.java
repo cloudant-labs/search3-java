@@ -15,7 +15,6 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
-
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DoubleDocValuesField;
 import org.apache.lucene.document.DoublePoint;
@@ -32,78 +31,78 @@ import org.apache.lucene.util.BytesRef;
 
 public final class DocumentBuilder {
 
-    static final FacetsConfig FACETS_CONFIG = new FacetsConfig();
-    private Document document;
+  static final FacetsConfig FACETS_CONFIG = new FacetsConfig();
+  private Document document;
 
-    public DocumentBuilder() {
+  public DocumentBuilder() {}
+
+  public DocumentBuilder addString(
+      final String name, final String value, final boolean store, final boolean facet) {
+    doc().add(new StringField(name, value, toStore(store)));
+    doc().add(new SortedDocValuesField(name, new BytesRef(value)));
+    if (facet) {
+      doc().add(new SortedSetDocValuesFacetField(name, value));
     }
+    return this;
+  }
 
-    public DocumentBuilder addString(final String name, final String value, final boolean store, final boolean facet) {
-        doc().add(new StringField(name, value, toStore(store)));
-        doc().add(new SortedDocValuesField(name, new BytesRef(value)));
-        if (facet) {
-            doc().add(new SortedSetDocValuesFacetField(name, value));
-        }
-        return this;
+  public DocumentBuilder addText(
+      final String name, final String value, final boolean store, final boolean facet) {
+    doc().add(new TextField(name, value, toStore(store)));
+    doc().add(new SortedDocValuesField(name, new BytesRef(value)));
+    if (facet) {
+      doc().add(new SortedSetDocValuesFacetField(name, value));
     }
+    return this;
+  }
 
-    public DocumentBuilder addText(final String name, final String value, final boolean store, final boolean facet) {
-        doc().add(new TextField(name, value, toStore(store)));
-        doc().add(new SortedDocValuesField(name, new BytesRef(value)));
-        if (facet) {
-            doc().add(new SortedSetDocValuesFacetField(name, value));
-        }
-        return this;
+  public DocumentBuilder addBoolean(final String name, final boolean value, final boolean store) {
+    doc().add(new StringField(name, value ? "true" : "false", toStore(store)));
+    return this;
+  }
+
+  public DocumentBuilder addLong(final String name, final long value, final boolean store) {
+    // For querying.
+    doc().add(new LongPoint(name, value));
+
+    // For sorting and facets.
+    doc().add(new NumericDocValuesField(name, value));
+
+    // For retrieval.
+    if (store) {
+      doc().add(new StoredField(name, value));
     }
+    return this;
+  }
 
-    public DocumentBuilder addBoolean(final String name, final boolean value, final boolean store) {
-        doc().add(new StringField(name, value ? "true" : "false", toStore(store)));
-        return this;
+  public DocumentBuilder addDouble(final String name, final double value, final boolean store) {
+    // For querying.
+    doc().add(new DoublePoint(name, value));
+
+    // For sorting and facets.
+    doc().add(new DoubleDocValuesField(name, value));
+
+    // For retrieval.
+    if (store) {
+      doc().add(new StoredField(name, value));
     }
+    return this;
+  }
 
-    public DocumentBuilder addLong(final String name, final long value, final boolean store) {
-        // For querying.
-        doc().add(new LongPoint(name, value));
+  public Document build() throws IOException {
+    final Document result = doc();
+    this.document = null;
+    return FACETS_CONFIG.build(result);
+  }
 
-        // For sorting and facets.
-        doc().add(new NumericDocValuesField(name, value));
+  private Store toStore(final boolean store) {
+    return store ? Store.YES : Store.NO;
+  }
 
-        // For retrieval.
-        if (store) {
-            doc().add(new StoredField(name, value));
-        }
-        return this;
+  private Document doc() {
+    if (this.document == null) {
+      this.document = new Document();
     }
-
-    public DocumentBuilder addDouble(final String name, final double value, final boolean store) {
-        // For querying.
-        doc().add(new DoublePoint(name, value));
-
-        // For sorting and facets.
-        doc().add(new DoubleDocValuesField(name, value));
-
-        // For retrieval.
-        if (store) {
-            doc().add(new StoredField(name, value));
-        }
-        return this;
-    }
-
-    public Document build() throws IOException {
-        final Document result = doc();
-        this.document = null;
-        return FACETS_CONFIG.build(result);
-    }
-
-    private Store toStore(final boolean store) {
-        return store ? Store.YES : Store.NO;
-    }
-
-    private Document doc() {
-        if (this.document == null) {
-            this.document = new Document();
-        }
-        return this.document;
-    }
-
+    return this.document;
+  }
 }

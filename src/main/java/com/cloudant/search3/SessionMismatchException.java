@@ -16,10 +16,9 @@ package com.cloudant.search3;
 
 public class SessionMismatchException extends IllegalArgumentException {
 
-    private static final long serialVersionUID = 1L;
+  private static final long serialVersionUID = 1L;
 
-    public SessionMismatchException(final String message) {
-        super(message);
-    }
-
+  public SessionMismatchException(final String message) {
+    super(message);
+  }
 }

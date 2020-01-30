@@ -15,7 +15,6 @@
 package com.cloudant.search3;
 
 import java.io.IOException;
-
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
@@ -33,90 +32,91 @@ import org.locationtech.spatial4j.shape.Point;
  */
 public class DistanceValueSource extends DoubleValuesSource {
 
-    private final SpatialContext ctx;
-    private final String lon;
-    private final String lat;
-    private final double multiplier;
-    private final double nullValue;
-    private final Point from;
+  private final SpatialContext ctx;
+  private final String lon;
+  private final String lat;
+  private final double multiplier;
+  private final double nullValue;
+  private final Point from;
 
-    public DistanceValueSource(final SpatialContext ctx, final String lon, final String lat, final double multiplier,
-            final Point from) {
-        this.ctx = ctx;
-        this.lon = lon;
-        this.lat = lat;
-        this.multiplier = multiplier;
-        this.nullValue = 180 * multiplier;
-        this.from = from;
-    }
+  public DistanceValueSource(
+      final SpatialContext ctx,
+      final String lon,
+      final String lat,
+      final double multiplier,
+      final Point from) {
+    this.ctx = ctx;
+    this.lon = lon;
+    this.lat = lat;
+    this.multiplier = multiplier;
+    this.nullValue = 180 * multiplier;
+    this.from = from;
+  }
 
-    @Override
-    public boolean isCacheable(final LeafReaderContext ctx) {
-        return DocValues.isCacheable(ctx, lon, lat);
-    }
+  @Override
+  public boolean isCacheable(final LeafReaderContext ctx) {
+    return DocValues.isCacheable(ctx, lon, lat);
+  }
 
-    @Override
-    public DoubleValues getValues(final LeafReaderContext readerContext, final DoubleValues scores) throws IOException {
-        LeafReader reader = readerContext.reader();
+  @Override
+  public DoubleValues getValues(final LeafReaderContext readerContext, final DoubleValues scores)
+      throws IOException {
+    LeafReader reader = readerContext.reader();
 
-        final NumericDocValues ptX = DocValues.getNumeric(reader, lon);
-        final NumericDocValues ptY = DocValues.getNumeric(reader, lat);
+    final NumericDocValues ptX = DocValues.getNumeric(reader, lon);
+    final NumericDocValues ptY = DocValues.getNumeric(reader, lat);
 
-        return DoubleValues.withDefault(new DoubleValues() {
+    return DoubleValues.withDefault(
+        new DoubleValues() {
 
-            private final Point from = DistanceValueSource.this.from;
-            private final DistanceCalculator calculator = ctx.getDistCalc();
+          private final Point from = DistanceValueSource.this.from;
+          private final DistanceCalculator calculator = ctx.getDistCalc();
 
-            @Override
-            public double doubleValue() throws IOException {
-                double x = Double.longBitsToDouble(ptX.longValue());
-                double y = Double.longBitsToDouble(ptY.longValue());
-                return calculator.distance(from, x, y) * multiplier;
-            }
+          @Override
+          public double doubleValue() throws IOException {
+            double x = Double.longBitsToDouble(ptX.longValue());
+            double y = Double.longBitsToDouble(ptY.longValue());
+            return calculator.distance(from, x, y) * multiplier;
+          }
 
-            @Override
-            public boolean advanceExact(int doc) throws IOException {
-                return ptX.advanceExact(doc) && ptY.advanceExact(doc);
-            }
+          @Override
+          public boolean advanceExact(int doc) throws IOException {
+            return ptX.advanceExact(doc) && ptY.advanceExact(doc);
+          }
+        },
+        nullValue);
+  }
 
-        }, nullValue);
-    }
+  @Override
+  public boolean needsScores() {
+    return false;
+  }
 
-    @Override
-    public boolean needsScores() {
-        return false;
-    }
+  @Override
+  public DoubleValuesSource rewrite(IndexSearcher reader) throws IOException {
+    return this;
+  }
 
-    @Override
-    public DoubleValuesSource rewrite(IndexSearcher reader) throws IOException {
-        return this;
-    }
+  @Override
+  public int hashCode() {
+    return from.hashCode();
+  }
 
-    @Override
-    public int hashCode() {
-        return from.hashCode();
-    }
+  @Override
+  public boolean equals(final Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
 
-    @Override
-    public boolean equals(final Object o) {
-        if (this == o)
-            return true;
-        if (o == null || getClass() != o.getClass())
-            return false;
+    DistanceValueSource that = (DistanceValueSource) o;
 
-        DistanceValueSource that = (DistanceValueSource) o;
+    if (!from.equals(that.from)) return false;
+    if (multiplier != that.multiplier) return false;
 
-        if (!from.equals(that.from))
-            return false;
-        if (multiplier != that.multiplier)
-            return false;
+    return true;
+  }
 
-        return true;
-    }
-
-    @Override
-    public String toString() {
-        return "DistanceValueSource(" + from + ")";
-    }
-
+  @Override
+  public String toString() {
+    return "DistanceValueSource(" + from + ")";
+  }
 }
