@@ -19,6 +19,10 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.kqueue.KQueueEventLoopGroup;
+import io.netty.channel.kqueue.KQueueServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.ServerSocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -32,6 +36,7 @@ import java.util.Collections;
 import java.util.List;
 import javax.net.ssl.SSLException;
 import org.apache.commons.configuration2.Configuration;
+import org.apache.commons.lang3.SystemUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -100,11 +105,22 @@ public abstract class AbstractServer {
   }
 
   private EventLoopGroup newEventLoopGroup(final int threadCount) {
+    if (SystemUtils.IS_OS_LINUX) {
+      return new EpollEventLoopGroup(threadCount);
+    }
+    if (SystemUtils.IS_OS_MAC) {
+      return new KQueueEventLoopGroup(threadCount);
+    }
     return new NioEventLoopGroup(threadCount);
   }
 
   private Class<? extends ServerSocketChannel> serverSocketChannelClass() {
+    if (SystemUtils.IS_OS_LINUX) {
+      return EpollServerSocketChannel.class;
+    }
+    if (SystemUtils.IS_OS_MAC) {
+      return KQueueServerSocketChannel.class;
+    }
     return NioServerSocketChannel.class;
   }
-
 }
