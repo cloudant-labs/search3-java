@@ -71,7 +71,8 @@ public abstract class AbstractServer {
     final int port = configuration.getInt("port");
     ch = b.bind(port).sync().channel();
 
-    logger.info("Server started on port {} {} TLS.", port, sslContext != null ? "with" : "without");
+    logger.info(
+        "Server started on port {} {} TLS ({}).", port, sslContext != null ? "with" : "without", b);
   }
 
   public final void stop() throws InterruptedException {
