@@ -20,6 +20,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.ServerSocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
@@ -53,12 +54,12 @@ public abstract class AbstractServer {
     final SslContext sslContext = configureSslContext();
     final ChannelHandler channelHandler = configureChannelHandler(sslContext);
 
-    bossGroup = new NioEventLoopGroup(bossGroupThreadCount);
-    workerGroup = new NioEventLoopGroup();
+    bossGroup = newEventLoopGroup(bossGroupThreadCount);
+    workerGroup = newEventLoopGroup(1);
     final ServerBootstrap b = new ServerBootstrap();
     b.option(ChannelOption.SO_BACKLOG, soBacklog);
     b.group(bossGroup, workerGroup)
-        .channel(NioServerSocketChannel.class)
+        .channel(serverSocketChannelClass())
         .handler(new LoggingHandler(LogLevel.INFO))
         .childHandler(channelHandler);
 
@@ -97,4 +98,13 @@ public abstract class AbstractServer {
         .clientAuth(clientAuth)
         .build();
   }
+
+  private EventLoopGroup newEventLoopGroup(final int threadCount) {
+    return new NioEventLoopGroup(threadCount);
+  }
+
+  private Class<? extends ServerSocketChannel> serverSocketChannelClass() {
+    return NioServerSocketChannel.class;
+  }
+
 }
