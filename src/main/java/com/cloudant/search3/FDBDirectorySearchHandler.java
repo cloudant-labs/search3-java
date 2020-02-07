@@ -24,7 +24,6 @@ import com.cloudant.search3.grpc.Search3.Hit;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
-import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.cloudant.search3.grpc.Search3.UpdateSeq;
 import io.prometheus.client.Histogram;
 import java.io.IOException;
@@ -133,21 +132,6 @@ public final class FDBDirectorySearchHandler extends BaseSearchHandler {
 
           return responseBuilder.build();
         });
-  }
-
-  @Override
-  public SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException {
-    verifySession(request.getIndex());
-    if (!request.hasSeq() && !request.hasPurgeSeq()) {
-      throw new IllegalArgumentException("Must set at least one seq parameter.");
-    }
-    if (request.hasSeq()) {
-      this.pendingUpdateSeq = request.getSeq();
-    }
-    if (request.hasPurgeSeq()) {
-      this.pendingPurgeSeq = request.getPurgeSeq();
-    }
-    return sessionResponse();
   }
 
   @Override

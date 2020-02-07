@@ -23,7 +23,6 @@ import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
-import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import java.io.IOException;
 import org.apache.lucene.queryparser.classic.ParseException;
 
@@ -39,8 +38,6 @@ public interface SearchHandler {
   InfoResponse info(final Index index) throws IOException;
 
   SearchResponse search(final SearchRequest request) throws IOException, ParseException;
-
-  SessionResponse setUpdateSeq(final SetUpdateSeqRequest request) throws IOException;
 
   SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException;
 
