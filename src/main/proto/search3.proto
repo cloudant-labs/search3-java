@@ -158,12 +158,6 @@ message DocumentDeleteRequest {
     UpdateSeq purge_seq = 4;
 }
 
-message SetUpdateSeqRequest {
-    Index index = 1;
-    UpdateSeq seq = 2;
-    UpdateSeq purge_seq = 3;
-}
-
 message AnalyzeRequest {
     AnalyzerSpec analyzer = 1;
     string text = 2;

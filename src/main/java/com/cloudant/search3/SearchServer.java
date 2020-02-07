@@ -32,7 +32,6 @@ import com.cloudant.search3.grpc.Search3.ErrorResponse.Type;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.Index;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
-import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.google.protobuf.Empty;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
@@ -144,14 +143,6 @@ public class SearchServer extends AbstractServer {
                   decode(DocumentDeleteRequest.getDefaultInstance(), req);
               messageType = "session_response";
               result = encode(search.deleteDocument(request));
-              break;
-            }
-          case "/Search/SetUpdateSequence":
-            {
-              final SetUpdateSeqRequest request =
-                  decode(SetUpdateSeqRequest.getDefaultInstance(), req);
-              messageType = "session_response";
-              result = encode(search.setUpdateSequence(request));
               break;
             }
           case "/Search/Analyze":

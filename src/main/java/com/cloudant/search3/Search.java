@@ -30,7 +30,6 @@ import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
 import com.cloudant.search3.grpc.Search3.SessionResponse;
-import com.cloudant.search3.grpc.Search3.SetUpdateSeqRequest;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -215,14 +214,6 @@ public final class Search implements Closeable {
         handler -> {
           final InfoResponse response = handler.info(request);
           return response;
-        });
-  }
-
-  public SessionResponse setUpdateSequence(final SetUpdateSeqRequest request) throws Exception {
-    return execute(
-        request.getIndex(),
-        handler -> {
-          return handler.setUpdateSeq(request);
         });
   }
 
