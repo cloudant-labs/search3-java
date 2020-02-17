@@ -57,7 +57,7 @@ public abstract class AbstractServer {
     final int bossGroupThreadCount = configuration.getInt("boss_group_thread_count", 1);
     final int soBacklog = configuration.getInt("so_backlog", 1024);
     final SslContext sslContext = configureSslContext();
-    final ChannelHandler channelHandler = configureChannelHandler(sslContext);
+    final ChannelHandler channelHandler = configureChannelHandler();
 
     bossGroup = newEventLoopGroup(bossGroupThreadCount);
     workerGroup = newEventLoopGroup(1);
@@ -81,9 +81,9 @@ public abstract class AbstractServer {
     workerGroup.shutdownGracefully();
   }
 
-  protected abstract ChannelHandler configureChannelHandler(final SslContext sslContext);
+  protected abstract ChannelHandler configureChannelHandler();
 
-  private SslContext configureSslContext() throws SSLException {
+  protected final SslContext configureSslContext() throws SSLException {
     if (!configuration.getBoolean("tls.enabled", false)) {
       return null;
     }

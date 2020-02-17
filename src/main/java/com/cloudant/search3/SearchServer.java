@@ -61,6 +61,7 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import io.netty.util.concurrent.EventExecutorGroup;
 import java.io.IOException;
+import javax.net.ssl.SSLException;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -248,17 +249,15 @@ public class SearchServer extends AbstractServer {
 
     private final EventExecutorGroup searchGroup;
 
-    private final SslContext sslContext;
-
-    public SearchServerInitializer(final SslContext sslContext) {
-      this.sslContext = sslContext;
+    public SearchServerInitializer() {
       final int concurrency = configuration.getInt("concurrency", 16);
       this.searchGroup = new DefaultEventExecutorGroup(concurrency);
     }
 
     @Override
-    public void initChannel(SocketChannel ch) {
+    public void initChannel(SocketChannel ch) throws SSLException {
       final ChannelPipeline p = ch.pipeline();
+      final SslContext sslContext = configureSslContext();
       if (sslContext != null) {
         p.addLast(sslContext.newHandler(ch.alloc()));
       }
@@ -289,7 +288,7 @@ public class SearchServer extends AbstractServer {
   }
 
   @Override
-  protected ChannelHandler configureChannelHandler(final SslContext sslContext) {
-    return new SearchServerInitializer(sslContext);
+  protected ChannelHandler configureChannelHandler() {
+    return new SearchServerInitializer();
   }
 }

@@ -51,6 +51,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.net.ssl.SSLException;
 import org.apache.commons.configuration2.Configuration;
 
 public class MetricsServer extends AbstractServer {
@@ -125,16 +126,12 @@ public class MetricsServer extends AbstractServer {
     }
   }
 
-  private static class MetricsServerInitializer extends ChannelInitializer<SocketChannel> {
-    private final SslContext sslContext;
-
-    public MetricsServerInitializer(SslContext sslContext) {
-      this.sslContext = sslContext;
-    }
+  private class MetricsServerInitializer extends ChannelInitializer<SocketChannel> {
 
     @Override
-    public void initChannel(final SocketChannel ch) {
+    public void initChannel(final SocketChannel ch) throws SSLException {
       ChannelPipeline p = ch.pipeline();
+      final SslContext sslContext = configureSslContext();
       if (sslContext != null) {
         p.addLast(sslContext.newHandler(ch.alloc()));
       }
@@ -151,7 +148,7 @@ public class MetricsServer extends AbstractServer {
   }
 
   @Override
-  protected ChannelHandler configureChannelHandler(final SslContext sslContext) {
-    return new MetricsServerInitializer(sslContext);
+  protected ChannelHandler configureChannelHandler() {
+    return new MetricsServerInitializer();
   }
 }
