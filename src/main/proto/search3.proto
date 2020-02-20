@@ -81,6 +81,10 @@ message Path {
     repeated string parts = 1;
 }
 
+message IndexCleanupRequest {
+    repeated string signatures = 1;
+}
+
 message GroupSearchRequest {
     Index index = 1;
     string query = 2;
