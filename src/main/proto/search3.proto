@@ -85,6 +85,10 @@ message IndexCleanupRequest {
     repeated string signatures = 1;
 }
 
+message IndexCleanupResponse {
+    uint32 indexes_cleaned = 1;
+}
+
 message GroupSearchRequest {
     Index index = 1;
     string query = 2;

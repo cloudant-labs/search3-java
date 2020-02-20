@@ -31,6 +31,7 @@ import com.cloudant.search3.grpc.Search3.ErrorResponse;
 import com.cloudant.search3.grpc.Search3.ErrorResponse.Type;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.Index;
+import com.cloudant.search3.grpc.Search3.IndexCleanupRequest;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.google.protobuf.Empty;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -150,6 +151,14 @@ public class SearchServer extends AbstractServer {
               final AnalyzeRequest request = decode(AnalyzeRequest.getDefaultInstance(), req);
               messageType = "analyze_response";
               result = encode(search.analyze(request));
+              break;
+            }
+          case "/Search/IndexCleanup":
+            {
+              final IndexCleanupRequest request =
+                  decode(IndexCleanupRequest.getDefaultInstance(), req);
+              messageType = "index_cleanup_response";
+              result = encode(search.indexCleanup(request));
               break;
             }
           default:

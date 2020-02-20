@@ -26,6 +26,8 @@ import com.cloudant.search3.grpc.Search3.DocumentUpdateRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchRequest;
 import com.cloudant.search3.grpc.Search3.GroupSearchResponse;
 import com.cloudant.search3.grpc.Search3.Index;
+import com.cloudant.search3.grpc.Search3.IndexCleanupRequest;
+import com.cloudant.search3.grpc.Search3.IndexCleanupResponse;
 import com.cloudant.search3.grpc.Search3.InfoResponse;
 import com.cloudant.search3.grpc.Search3.SearchRequest;
 import com.cloudant.search3.grpc.Search3.SearchResponse;
@@ -247,6 +249,13 @@ public final class Search implements Closeable {
         handler -> {
           return handler.deleteDocument(request);
         });
+  }
+
+  public IndexCleanupResponse indexCleanup(final IndexCleanupRequest request) throws Exception {
+    final int requestNumber = request.getSignaturesCount();
+    final IndexCleanupResponse.Builder builder = IndexCleanupResponse.newBuilder();
+    builder.setIndexesCleaned(requestNumber);
+    return builder.build();
   }
 
   public AnalyzeResponse analyze(final AnalyzeRequest request) throws IOException {

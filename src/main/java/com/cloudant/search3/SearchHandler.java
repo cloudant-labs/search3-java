@@ -37,6 +37,8 @@ public interface SearchHandler {
 
   InfoResponse info(final Index index) throws IOException;
 
+  // IndexCleanupResponse indexCleanup(final IndexCleanupRequest request) throws IOException;
+
   SearchResponse search(final SearchRequest request) throws IOException, ParseException;
 
   SessionResponse updateDocument(final DocumentUpdateRequest request) throws IOException;
