@@ -82,7 +82,8 @@ message Path {
 }
 
 message IndexCleanupRequest {
-    repeated string signatures = 1;
+    string dbprefix = 1;
+    repeated string signatures = 2;
 }
 
 message IndexCleanupResponse {

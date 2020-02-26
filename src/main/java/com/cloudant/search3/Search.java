@@ -252,6 +252,7 @@ public final class Search implements Closeable {
   }
 
   public IndexCleanupResponse indexCleanup(final IndexCleanupRequest request) throws Exception {
+    final String dbPrefix = request.getDbprefix();
     final int requestNumber = request.getSignaturesCount();
     final IndexCleanupResponse.Builder builder = IndexCleanupResponse.newBuilder();
     builder.setIndexesCleaned(requestNumber);
