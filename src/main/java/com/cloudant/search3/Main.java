@@ -14,7 +14,10 @@
 
 package com.cloudant.search3;
 
+import com.apple.foundationdb.Database;
 import com.apple.foundationdb.FDB;
+import com.apple.foundationdb.subspace.Subspace;
+import com.apple.foundationdb.tuple.Tuple;
 import java.io.File;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.INIConfiguration;
@@ -37,6 +40,16 @@ public class Main {
 
     // Initialize FDB.
     FDB.selectAPIVersion(configuration.getInt("fdb.version"));
+    Database DB = FDB.instance().open();
+    byte[] prefix = new byte[]{1, 2, 3};
+    Subspace subspace = new Subspace(prefix);
+    final byte[] key = subspace.pack(Tuple.from("health", "check"));
+    DB.run(
+            txn -> {
+              txn.get(key).join();
+              return null;
+            });
+    LOGGER.info("Connected to FDB.");
 
     // Start metrics first.
     final MetricsServer metricsServer = new MetricsServer(metricsConfiguration);
